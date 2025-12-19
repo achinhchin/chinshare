@@ -199,7 +199,12 @@ async function startBroadcasting() {
     try {
         localStream = await navigator.mediaDevices.getDisplayMedia({
             video: videoConstraints,
-            audio: true
+            audio: {
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                channelCount: 2
+            }
         });
 
         // Switch UI
@@ -253,7 +258,12 @@ async function changeScreen() {
         // Get new screen
         localStream = await navigator.mediaDevices.getDisplayMedia({
             video: videoConstraints,
-            audio: true
+            audio: {
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                channelCount: 2
+            }
         });
 
         // Update local preview
@@ -312,6 +322,32 @@ function createPeerConnection(targetId) {
     return pc;
 }
 
+// SDP Munging for high-quality stereo Opus audio
+function upgradeAudioQuality(sdp) {
+    // Find Opus payload type
+    const opusMatch = sdp.match(/a=rtpmap:(\d+) opus/);
+    if (!opusMatch) return sdp;
+    const opusPayload = opusMatch[1];
+
+    // Replace or add fmtp line for Opus with stereo and high bitrate
+    const fmtpRegex = new RegExp(`a=fmtp:${opusPayload} (.*)`, 'g');
+    if (sdp.match(fmtpRegex)) {
+        // Modify existing fmtp line
+        sdp = sdp.replace(fmtpRegex, (match, params) => {
+            // Remove any existing stereo/bitrate params and add our own
+            let newParams = params.replace(/;?stereo=\d/g, '').replace(/;?sprop-stereo=\d/g, '').replace(/;?maxaveragebitrate=\d+/g, '');
+            return `a=fmtp:${opusPayload} ${newParams};stereo=1;sprop-stereo=1;maxaveragebitrate=510000`;
+        });
+    } else {
+        // Add fmtp line after rtpmap
+        sdp = sdp.replace(
+            new RegExp(`(a=rtpmap:${opusPayload} opus[^\n]*)`),
+            `$1\na=fmtp:${opusPayload} minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000`
+        );
+    }
+    return sdp;
+}
+
 async function handleViewerConnect(viewerId) {
     console.log('Viewer joined:', viewerId);
     connectedViewers.add(viewerId);
@@ -336,6 +372,8 @@ async function initiateConnection(viewerId) {
     updateBitrateForPC(pc, 5000000);
 
     const offer = await pc.createOffer();
+    // Apply SDP munging for high-quality audio
+    offer.sdp = upgradeAudioQuality(offer.sdp);
     await pc.setLocalDescription(offer);
 
     ws.send(JSON.stringify({
@@ -392,21 +430,23 @@ function stopSharing() {
 
 // --- Bitrate Sync ---
 function updateBitrateFromSlider(val) {
-    document.getElementById('bitrate-input').value = val;
+    document.getElementById('bitrate-val').innerText = val + ' Mbps';
     updateBitrate(val);
 }
 function updateBitrateFromInput(val) {
     document.getElementById('bitrate-slider').value = val;
+    document.getElementById('bitrate-val').innerText = val + ' Mbps';
     updateBitrate(val);
 }
 
 // --- Audio Bitrate ---
 function updateAudioBitrateFromSlider(val) {
-    document.getElementById('audio-bitrate-input').value = val;
+    document.getElementById('audio-bitrate-val').innerText = val + ' kbps';
     updateAudioBitrate(val);
 }
 function updateAudioBitrateFromInput(val) {
     document.getElementById('audio-bitrate-slider').value = val;
+    document.getElementById('audio-bitrate-val').innerText = val + ' kbps';
     updateAudioBitrate(val);
 }
 
