@@ -71,29 +71,39 @@
 
         <div id="controls-overlay">
             <!-- Broadcaster Controls -->
-            <div id="broadcaster-controls" class="hidden">
+            <div id="broadcaster-controls" class="hidden"
+                style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap;">
                 <div class="control-group">
-                    <label>Max Bitrate (Mbps)</label>
-                    <div style="display: flex; gap: 10px; align-items: center;">
+                    <label>Video Bitrate (Mbps)</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
                         <input type="range" min="1" max="50" value="5" id="bitrate-slider"
                             oninput="updateBitrateFromSlider(this.value)">
                         <input type="number" id="bitrate-input" value="5" min="1" max="50"
-                            style="width: 50px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 5px; padding: 2px; text-align: center;"
+                            style="width: 50px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 5px; padding: 4px; text-align: center;"
                             onchange="updateBitrateFromInput(this.value)">
                     </div>
                 </div>
-                <div class="control-group hidden" id="overlay-content-hint" style="margin-top: 5px;">
+                <div class="control-group">
+                    <label>Audio Bitrate (kbps)</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="range" min="32" max="512" value="128" id="audio-bitrate-slider"
+                            oninput="updateAudioBitrateFromSlider(this.value)">
+                        <input type="number" id="audio-bitrate-input" value="128" min="32" max="512"
+                            style="width: 60px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 5px; padding: 4px; text-align: center;"
+                            onchange="updateAudioBitrateFromInput(this.value)">
+                    </div>
+                </div>
+                <div class="control-group hidden" id="overlay-content-hint">
                     <label>Content Focus</label>
                     <select id="overlay-hint-select" onchange="applyContentHint(this.value)">
                         <option value="motion">Motion</option>
                         <option value="detail">Detail</option>
                     </select>
                 </div>
-                <!-- Change Screen & Stop Button -->
-                <div class="control-group" style="margin-top: 5px;">
+                <div class="control-group">
                     <label>Action</label>
                     <div style="display: flex; gap: 8px;">
-                        <button class="btn-outline" onclick="changeScreen()">Change Screen</button>
+                        <button class="btn-outline" onclick="changeScreen()">Change</button>
                         <button class="btn-outline" style="border-color: #ef4444; color: #ef4444;"
                             onclick="stopSharing()">Stop</button>
                     </div>
@@ -101,12 +111,19 @@
             </div>
 
             <!-- Viewer Controls -->
-            <div id="viewer-controls" class="hidden control-group">
-                <label>Zoom</label>
-                <div style="display: flex; gap: 5px;">
-                    <button class="btn-outline" style="padding: 4px 10px;" onclick="zoomIn()">+</button>
-                    <button class="btn-outline" style="padding: 4px 10px;" onclick="zoomOut()">-</button>
-                    <button class="btn-outline" style="padding: 4px 10px;" onclick="resetZoom()">Reset</button>
+            <div id="viewer-controls" class="hidden" style="display: flex; gap: 12px; align-items: flex-end;">
+                <div class="control-group">
+                    <label>Zoom</label>
+                    <div style="display: flex; gap: 5px;">
+                        <button class="btn-outline" style="padding: 4px 10px;" onclick="zoomIn()">+</button>
+                        <button class="btn-outline" style="padding: 4px 10px;" onclick="zoomOut()">-</button>
+                        <button class="btn-outline" style="padding: 4px 10px;" onclick="resetZoom()">Fit</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>View</label>
+                    <button class="btn-outline" style="padding: 4px 12px;" onclick="toggleFullscreen()">⛶
+                        Fullscreen</button>
                 </div>
             </div>
 

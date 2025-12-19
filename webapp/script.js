@@ -400,6 +400,48 @@ function updateBitrateFromInput(val) {
     updateBitrate(val);
 }
 
+// --- Audio Bitrate ---
+function updateAudioBitrateFromSlider(val) {
+    document.getElementById('audio-bitrate-input').value = val;
+    updateAudioBitrate(val);
+}
+function updateAudioBitrateFromInput(val) {
+    document.getElementById('audio-bitrate-slider').value = val;
+    updateAudioBitrate(val);
+}
+
+async function updateAudioBitrate(kbps) {
+    const bps = kbps * 1000;
+    for (const pc of viewerPCs.values()) {
+        const senders = pc.getSenders();
+        const audioSender = senders.find(s => s.track?.kind === 'audio');
+        if (audioSender) {
+            const params = audioSender.getParameters();
+            if (!params.encodings) params.encodings = [{}];
+            params.encodings[0].maxBitrate = bps;
+            try { await audioSender.setParameters(params); } catch (e) { console.error(e); }
+        }
+    }
+}
+
+// --- Fullscreen ---
+function toggleFullscreen() {
+    const stage = document.getElementById('stage');
+    if (!document.fullscreenElement) {
+        if (stage.requestFullscreen) {
+            stage.requestFullscreen();
+        } else if (stage.webkitRequestFullscreen) {
+            stage.webkitRequestFullscreen();
+        }
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        }
+    }
+}
+
 // --- Zoom ---
 function zoomIn() {
     zoomLevel += 0.25;
