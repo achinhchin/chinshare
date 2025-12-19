@@ -1,0 +1,13 @@
+{
+  "name": "chinshare-server",
+  "version": "1.0.0",
+  "module": "index.ts",
+  "type": "module",
+  "dependencies": {
+    "elysia": "latest",
+    "@elysiajs/cors": "latest"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}

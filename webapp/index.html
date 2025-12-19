@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>ChinShare - Advanced Screen Sharing</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body><button id="theme-toggle" onclick="toggleTheme()">🌙</button>
+    <div id="app">
+        <!-- View 1: Home -->
+        <div id="home-view" class="panel">
+            <h1>ChinShare</h1>
+            <p style="color: var(--text-secondary)">Simple & Fast Screen Sharing</p>
+            <div style="margin-top: 30px;"><button class="btn" id="btn-create" onclick="createRoom()"
+                    disabled>Connecting...</button><br>
+                <div style="margin: 20px; position: relative"><span
+                        style="background: var(--surface); padding: 0 10px; color: var(--text-secondary); font-size: 0.9rem">OR</span>
+                </div><input type="text" id="room-input" placeholder="Room Code" maxlength="6"><br><button
+                    class="btn btn-outline" id="btn-join" onclick="joinRoom()" disabled>Connecting...</button>
+            </div>
+        </div>
+        <!-- View 2: Setup (Broadcaster) -->
+        <div id="setup-view" class="panel hidden">
+            <h2>Your Room Code</h2>
+            <div id="display-code" class="room-code">......</div>
+            <p>Share this code with viewers</p>
+            <div class="control-group" style="text-align: left; margin-top: 20px;">
+                <label>Resolution Limit</label><select id="res-limit">
+                    <option value="1080">1080p</option>
+                    <option value="720">720p</option>
+                    <option value="unlimited">Unlimited</option>
+                </select>
+                <div id="content-hint-container" class="hidden">
+                    <label>Content Hint</label>
+                    <select id="content-hint-select" onchange="applyContentHint(this.value)">
+                        <option value="motion">Motion (Smooth Video)</option>
+                        <option value="detail">Detail (Clear Text)</option>
+                        <option value="text">Text (Sharpest)</option>
+                    </select>
+                </div>
+            </div><button class="btn" onclick="startBroadcasting()">Start Sharing</button>
+        </div>
+    </div>
+    <!-- View 3: Stage (Active Video) -->
+    <div id="stage" class="hidden">
+        <!-- Top Info Bar (Broadcaster) -->
+        <div id="info-bar" class="hidden">
+            <div class="info-pill">
+                <span id="stage-room-code" style="font-weight: bold; color: var(--accent);">Code: ------</span>
+                <span id="uptime" style="font-family: monospace; opacity: 0.8">00:00</span>
+                <span id="viewer-count">👤 0</span>
+            </div>
+        </div>
+        <!-- Waiting Message (Viewer) -->
+        <div id="viewer-waiting" class="hidden"
+            style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+            <h2>Waiting for host to start sharing...</h2>
+            <div class="loader"></div>
+        </div><video id="main-video" autoplay playsinline></video>
+        <!-- Stats Overlay (Viewer & Broadcaster) -->
+        <div id="stats-overlay" class="hidden">
+            <div>RESOLUTION: <span id="stat-res">-</span></div>
+            <div>FPS: <span id="stat-fps">-</span></div>
+            <div>BITRATE: <span id="stat-bitrate">-</span></div>
+            <div>PACKETS LOSS: <span id="stat-loss">-</span></div>
+        </div>
+
+        <div id="controls-overlay">
+            <!-- Broadcaster Controls -->
+            <div id="broadcaster-controls" class="hidden">
+                <div class="control-group">
+                    <label>Max Bitrate (Mbps)</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="range" min="1" max="50" value="5" id="bitrate-slider"
+                            oninput="updateBitrateFromSlider(this.value)">
+                        <input type="number" id="bitrate-input" value="5" min="1" max="50"
+                            style="width: 50px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 5px; padding: 2px; text-align: center;"
+                            onchange="updateBitrateFromInput(this.value)">
+                    </div>
+                </div>
+                <div class="control-group hidden" id="overlay-content-hint" style="margin-top: 5px;">
+                    <label>Content Focus</label>
+                    <select id="overlay-hint-select" onchange="applyContentHint(this.value)">
+                        <option value="motion">Motion</option>
+                        <option value="detail">Detail</option>
+                    </select>
+                </div>
+                <!-- Change Screen & Stop Button -->
+                <div class="control-group" style="margin-top: 5px;">
+                    <label>Action</label>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-outline" onclick="changeScreen()">Change Screen</button>
+                        <button class="btn-outline" style="border-color: #ef4444; color: #ef4444;"
+                            onclick="stopSharing()">Stop</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Viewer Controls -->
+            <div id="viewer-controls" class="hidden control-group">
+                <label>Zoom</label>
+                <div style="display: flex; gap: 5px;">
+                    <button class="btn-outline" style="padding: 4px 10px;" onclick="zoomIn()">+</button>
+                    <button class="btn-outline" style="padding: 4px 10px;" onclick="zoomOut()">-</button>
+                    <button class="btn-outline" style="padding: 4px 10px;" onclick="resetZoom()">Reset</button>
+                </div>
+            </div>
+
+            <!-- Common Controls -->
+            <div class="control-group">
+                <label>Volume</label>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <button class="btn-outline" id="mute-btn" style="padding: 4px 8px;"
+                        onclick="toggleMute()">🔊</button>
+                    <input type="range" min="0" max="1" step="0.1" value="1" oninput="setVolume(this.value)">
+                </div>
+            </div>
+            <div class="control-group">
+                <label>Info</label>
+                <button class="btn-outline" style="padding: 4px 10px;" onclick="toggleStats()">Stats</button>
+            </div>
+        </div>
+    </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>
