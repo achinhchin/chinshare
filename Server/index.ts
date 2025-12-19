@@ -2,7 +2,7 @@ import { Elysia, file } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { join, resolve } from 'path';
 
-const PORT = 1770;
+const PORT = 8000;
 
 const log = (msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`);
 

@@ -1,4 +1,7 @@
-const ws = new WebSocket('ws://' + location.hostname + ':' + location.port + '/ws');
+// Dynamic WebSocket URL for production
+const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const ws = new WebSocket(`${wsProtocol}//${location.host}/ws`);
+
 let currentRole = null;
 let localStream = null;
 let peerConnection = null;
@@ -26,6 +29,43 @@ function toggleTheme() {
     document.getElementById('theme-toggle').innerText = next === 'light' ? '☀️' : '🌙';
 }
 
+// Copy shareable room link
+function copyRoomLink() {
+    if (!currentRoomId) return;
+    const url = `${location.origin}/?r=${currentRoomId}`;
+    navigator.clipboard.writeText(url).then(() => {
+        // Visual feedback
+        const btn = event.target;
+        const original = btn.innerText;
+        btn.innerText = '✓';
+        setTimeout(() => btn.innerText = original, 1500);
+    }).catch(e => {
+        prompt('Copy this link:', url);
+    });
+}
+
+// Check for room code in URL and auto-join
+function checkUrlForRoom() {
+    const params = new URLSearchParams(location.search);
+    const roomCode = params.get('r');
+    if (roomCode && roomCode.length === 6) {
+        // Wait for WS to connect, then auto-join
+        const tryJoin = () => {
+            if (ws.readyState === WebSocket.OPEN) {
+                document.getElementById('room-input').value = roomCode;
+                joinRoom();
+                // Clean URL
+                history.replaceState(null, '', location.pathname);
+            } else if (ws.readyState === WebSocket.CONNECTING) {
+                setTimeout(tryJoin, 100);
+            }
+        };
+        tryJoin();
+        return true;
+    }
+    return false;
+}
+
 function startUptime() {
     startTime = Date.now();
     if (uptimeInterval) clearInterval(uptimeInterval);
@@ -49,6 +89,9 @@ ws.onopen = () => {
     cBtn.innerText = 'Create Share Room';
     jBtn.disabled = false;
     jBtn.innerText = 'Join Room';
+
+    // Check if URL has room code to auto-join
+    checkUrlForRoom();
 };
 
 ws.onerror = (e) => {

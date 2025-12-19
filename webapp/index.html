@@ -50,9 +50,10 @@
         <!-- Top Info Bar (Broadcaster) -->
         <div id="info-bar" class="hidden">
             <div class="info-pill">
-                <span id="stage-room-code" style="font-weight: bold; color: var(--accent);">Code: ------</span>
+                <span id="stage-room-code" style="font-weight: bold;">Code: ------</span>
                 <span id="uptime" style="font-family: monospace; opacity: 0.8">00:00</span>
                 <span id="viewer-count">👤 0</span>
+                <button class="ctrl-btn small" onclick="copyRoomLink()" title="Copy Link">🔗</button>
             </div>
         </div>
         <!-- Waiting Message (Viewer) -->
