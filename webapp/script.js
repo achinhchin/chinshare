@@ -90,8 +90,17 @@ ws.onopen = () => {
     jBtn.disabled = false;
     jBtn.innerText = 'Join Room';
 
-    // Check if URL has room code to auto-join
-    checkUrlForRoom();
+    // Auto-join if URL has room code
+    const params = new URLSearchParams(location.search);
+    const roomCode = params.get('r');
+    if (roomCode && roomCode.length === 6) {
+        console.log('Auto-joining room:', roomCode);
+        document.getElementById('room-input').value = roomCode;
+        setTimeout(() => {
+            joinRoom();
+            history.replaceState(null, '', location.pathname);
+        }, 200);
+    }
 };
 
 ws.onerror = (e) => {
