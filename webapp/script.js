@@ -443,9 +443,24 @@ async function handleOffer(data) {
     peerConnection = createPeerConnection(null);
 
     peerConnection.ontrack = (event) => {
-        document.getElementById('main-video').srcObject = event.streams[0];
-        document.getElementById('main-video').muted = false;
-        document.getElementById('main-video').play();
+        const video = document.getElementById('main-video');
+        video.srcObject = event.streams[0];
+
+        // Safari fix: Start muted for autoplay, then unmute
+        video.muted = true;
+
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                // Autoplay worked, try to unmute after a short delay
+                setTimeout(() => {
+                    video.muted = false;
+                }, 100);
+            }).catch(err => {
+                console.log('Autoplay blocked, showing play button:', err);
+                showPlayButton();
+            });
+        }
     };
 
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
@@ -458,6 +473,48 @@ async function handleOffer(data) {
         roomId: currentRoomId,
         from: myId // IMPORTANT: Send my ID so broadcaster knows who answered
     }));
+}
+
+// Show play button for Safari/browsers that block autoplay
+function showPlayButton() {
+    // Remove existing play button if any
+    let existingBtn = document.getElementById('safari-play-btn');
+    if (existingBtn) existingBtn.remove();
+
+    const playBtn = document.createElement('button');
+    playBtn.id = 'safari-play-btn';
+    playBtn.className = 'btn';
+    playBtn.innerHTML = '▶ Tap to Play';
+    playBtn.style.cssText = `
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1000;
+        padding: 20px 40px;
+        font-size: 1.5rem;
+        background: var(--primary);
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        animation: pulse 1.5s infinite;
+    `;
+
+    playBtn.onclick = () => {
+        const video = document.getElementById('main-video');
+        video.muted = false;
+        video.play().then(() => {
+            playBtn.remove();
+        }).catch(e => {
+            console.error('Play failed:', e);
+            // Try playing muted as last resort
+            video.muted = true;
+            video.play();
+            playBtn.remove();
+        });
+    };
+
+    document.getElementById('stage').appendChild(playBtn);
 }
 
 // --- Advanced Controls & Logic ---
