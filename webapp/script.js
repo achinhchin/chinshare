@@ -251,6 +251,8 @@ async function processAudioToStereo(stream) {
 
         // Create a stereo destination
         const destination = audioContext.createMediaStreamDestination();
+        destination.channelCount = 2;
+        destination.channelCountMode = 'explicit';
 
         // Create a channel splitter and merger to force stereo
         const audioTrack = audioTracks[0];
@@ -322,9 +324,13 @@ async function startBroadcasting() {
             video: videoConstraints,
             audio: {
                 echoCancellation: false,
-                noiseSuppression: false,
                 autoGainControl: false,
-                channelCount: 2,
+                noiseSuppression: false,
+                googEchoCancellation: false,
+                googAutoGainControl: false,
+                googNoiseSuppression: false,
+                googHighpassFilter: false,
+                channelCount: { ideal: 2, min: 2 },
                 sampleRate: 48000
             }
         });
@@ -391,9 +397,13 @@ async function changeScreen() {
             video: videoConstraints,
             audio: {
                 echoCancellation: false,
-                noiseSuppression: false,
                 autoGainControl: false,
-                channelCount: 2,
+                noiseSuppression: false,
+                googEchoCancellation: false,
+                googAutoGainControl: false,
+                googNoiseSuppression: false,
+                googHighpassFilter: false,
+                channelCount: { ideal: 2, min: 2 },
                 sampleRate: 48000
             }
         });
@@ -470,14 +480,17 @@ function upgradeAudioQuality(sdp) {
         // Modify existing fmtp line
         sdp = sdp.replace(fmtpRegex, (match, params) => {
             // Remove any existing stereo/bitrate params and add our own
-            let newParams = params.replace(/;?stereo=\d/g, '').replace(/;?sprop-stereo=\d/g, '').replace(/;?maxaveragebitrate=\d+/g, '');
-            return `a=fmtp:${opusPayload} ${newParams};stereo=1;sprop-stereo=1;maxaveragebitrate=510000`;
+            let newParams = params.replace(/;?stereo=\d/g, '')
+                .replace(/;?sprop-stereo=\d/g, '')
+                .replace(/;?maxaveragebitrate=\d+/g, '')
+                .replace(/;?cbr=\d/g, '');
+            return `a=fmtp:${opusPayload} ${newParams};stereo=1;sprop-stereo=1;maxaveragebitrate=510000;cbr=1`;
         });
     } else {
         // Add fmtp line after rtpmap
         sdp = sdp.replace(
             new RegExp(`(a=rtpmap:${opusPayload} opus[^\n]*)`),
-            `$1\na=fmtp:${opusPayload} minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000`
+            `$1\na=fmtp:${opusPayload} minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000;cbr=1`
         );
     }
     return sdp;
