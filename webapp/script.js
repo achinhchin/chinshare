@@ -229,6 +229,75 @@ function joinRoom() {
     document.getElementById('viewer-controls').classList.remove('hidden');
 }
 
+// Global audio context for stereo processing
+let audioContext = null;
+
+// Process audio through AudioContext to ensure stereo output
+async function processAudioToStereo(stream) {
+    const audioTracks = stream.getAudioTracks();
+
+    // If no audio track, return stream as-is
+    if (audioTracks.length === 0) {
+        console.log('No audio track to process');
+        return stream;
+    }
+
+    try {
+        // Create AudioContext with explicit stereo output
+        audioContext = new AudioContext({ sampleRate: 48000 });
+
+        // Create source from stream
+        const source = audioContext.createMediaStreamSource(stream);
+
+        // Create a stereo destination
+        const destination = audioContext.createMediaStreamDestination();
+
+        // Create a channel splitter and merger to force stereo
+        const audioTrack = audioTracks[0];
+        const settings = audioTrack.getSettings();
+        const inputChannels = settings.channelCount || 1;
+
+        console.log(`Audio input channels: ${inputChannels}`);
+
+        if (inputChannels === 1) {
+            // Mono input: duplicate to both L and R channels
+            const splitter = audioContext.createChannelSplitter(1);
+            const merger = audioContext.createChannelMerger(2);
+
+            source.connect(splitter);
+            splitter.connect(merger, 0, 0); // Mono to Left
+            splitter.connect(merger, 0, 1); // Mono to Right
+            merger.connect(destination);
+
+            console.log('Converted mono to stereo');
+        } else {
+            // Already stereo or more, just pass through
+            source.connect(destination);
+            console.log('Audio already stereo, passing through');
+        }
+
+        // Create new stream with video from original + processed audio
+        const processedStream = new MediaStream();
+
+        // Add video tracks from original stream
+        stream.getVideoTracks().forEach(track => {
+            processedStream.addTrack(track);
+        });
+
+        // Add processed stereo audio track
+        destination.stream.getAudioTracks().forEach(track => {
+            processedStream.addTrack(track);
+        });
+
+        console.log('Stereo audio processing enabled');
+        return processedStream;
+
+    } catch (e) {
+        console.error('Stereo processing failed, using original:', e);
+        return stream;
+    }
+}
+
 async function startBroadcasting() {
     const resLimit = document.getElementById('res-limit').value;
 
@@ -249,15 +318,19 @@ async function startBroadcasting() {
     }
 
     try {
-        localStream = await navigator.mediaDevices.getDisplayMedia({
+        const rawStream = await navigator.mediaDevices.getDisplayMedia({
             video: videoConstraints,
             audio: {
                 echoCancellation: false,
                 noiseSuppression: false,
                 autoGainControl: false,
-                channelCount: 2
+                channelCount: 2,
+                sampleRate: 48000
             }
         });
+
+        // Process audio to ensure stereo
+        localStream = await processAudioToStereo(rawStream);
 
         // Switch UI
         showView('stage');
@@ -307,16 +380,26 @@ async function changeScreen() {
             localStream.getTracks().forEach(t => t.stop());
         }
 
+        // Close old audio context
+        if (audioContext) {
+            audioContext.close();
+            audioContext = null;
+        }
+
         // Get new screen
-        localStream = await navigator.mediaDevices.getDisplayMedia({
+        const rawStream = await navigator.mediaDevices.getDisplayMedia({
             video: videoConstraints,
             audio: {
                 echoCancellation: false,
                 noiseSuppression: false,
                 autoGainControl: false,
-                channelCount: 2
+                channelCount: 2,
+                sampleRate: 48000
             }
         });
+
+        // Process audio to ensure stereo
+        localStream = await processAudioToStereo(rawStream);
 
         // Update local preview
         document.getElementById('main-video').srcObject = localStream;
