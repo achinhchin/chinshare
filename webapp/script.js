@@ -319,17 +319,54 @@ async function startBroadcasting() {
         };
     }
 
+    const forceStereo = document.getElementById('force-stereo').checked;
+
+    let audioConstraints = {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 2,
+        sampleRate: 48000
+    };
+
+    if (forceStereo) {
+        audioConstraints = {
+            echoCancellation: false,
+            autoGainControl: false,
+            noiseSuppression: false,
+            googEchoCancellation: false,
+            googAutoGainControl: false,
+            googNoiseSuppression: false,
+            googHighpassFilter: false,
+            channelCount: { ideal: 2, min: 2 },
+            sampleRate: 48000
+        };
+    }
+
     try {
-        const rawStream = await navigator.mediaDevices.getDisplayMedia({
-            video: videoConstraints,
-            audio: {
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false,
-                channelCount: 2,
-                sampleRate: 48000
+        let rawStream;
+        try {
+            rawStream = await navigator.mediaDevices.getDisplayMedia({
+                video: videoConstraints,
+                audio: audioConstraints
+            });
+        } catch (err) {
+            if (forceStereo) {
+                console.warn('Strict stereo constraints failed, falling back to standard:', err);
+                alert('Strict stereo not supported by your browser/device. Falling back to standard stereo.');
+                rawStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: videoConstraints,
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        channelCount: 2
+                    }
+                });
+            } else {
+                throw err;
             }
-        });
+        }
 
         // Process audio to ensure stereo
         localStream = await processAudioToStereo(rawStream);
@@ -389,16 +426,52 @@ async function changeScreen() {
         }
 
         // Get new screen
-        const rawStream = await navigator.mediaDevices.getDisplayMedia({
-            video: videoConstraints,
-            audio: {
+        let rawStream;
+        const forceStereo = document.getElementById('force-stereo').checked;
+
+        let audioConstraints = {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 2,
+            sampleRate: 48000
+        };
+
+        if (forceStereo) {
+            audioConstraints = {
                 echoCancellation: false,
-                noiseSuppression: false,
                 autoGainControl: false,
-                channelCount: 2,
+                noiseSuppression: false,
+                googEchoCancellation: false,
+                googAutoGainControl: false,
+                googNoiseSuppression: false,
+                googHighpassFilter: false,
+                channelCount: { ideal: 2, min: 2 },
                 sampleRate: 48000
+            };
+        }
+
+        try {
+            rawStream = await navigator.mediaDevices.getDisplayMedia({
+                video: videoConstraints,
+                audio: audioConstraints
+            });
+        } catch (err) {
+            if (forceStereo) {
+                console.warn('Strict stereo input failed fallback:', err);
+                rawStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: videoConstraints,
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        channelCount: 2
+                    }
+                });
+            } else {
+                throw err;
             }
-        });
+        }
 
         // Process audio to ensure stereo
         localStream = await processAudioToStereo(rawStream);

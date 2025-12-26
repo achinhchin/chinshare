@@ -12,6 +12,8 @@ build/
 .env.local
 .env.*.local
 
+chinshare/
+
 # IDE
 .vscode/
 .idea/
