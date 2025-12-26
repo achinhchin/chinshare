@@ -75,15 +75,22 @@
             <div id="broadcaster-controls" class="controls-row hidden">
                 <div class="ctrl">
                     <span class="ctrl-label">Video</span>
-                    <input type="range" min="1" max="50" value="5" id="bitrate-slider"
-                        oninput="updateBitrateFromSlider(this.value)">
-                    <span class="ctrl-value" id="bitrate-val">5 Mbps</span>
+                    <select id="video-bitrate-select" onchange="updateVideoBitrate(this.value)">
+                        <option value="2">2 Mbps</option>
+                        <option value="5">5 Mbps</option>
+                        <option value="10">10 Mbps</option>
+                        <option value="20" selected>20 Mbps</option>
+                        <option value="40">40 Mbps</option>
+                    </select>
                 </div>
                 <div class="ctrl">
                     <span class="ctrl-label">Audio</span>
-                    <input type="range" min="32" max="512" value="128" id="audio-bitrate-slider"
-                        oninput="updateAudioBitrateFromSlider(this.value)">
-                    <span class="ctrl-value" id="audio-bitrate-val">128 kbps</span>
+                    <select id="audio-bitrate-select" onchange="updateAudioBitrateSelect(this.value)">
+                        <option value="90">90 kbps</option>
+                        <option value="128">128 kbps</option>
+                        <option value="256">256 kbps</option>
+                        <option value="320" selected>320 kbps</option>
+                    </select>
                 </div>
                 <div class="ctrl-buttons">
                     <button class="ctrl-btn" onclick="changeScreen()">🔄 Switch</button>

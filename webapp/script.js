@@ -421,7 +421,11 @@ async function initiateConnection(viewerId) {
         pc.addTrack(track, localStream);
     });
 
-    updateBitrateForPC(pc, 5000000);
+    // Apply default bitrates from selects (20Mbps video, 320kbps audio)
+    const videoBitrate = parseInt(document.getElementById('video-bitrate-select').value) * 1000000;
+    const audioBitrate = parseInt(document.getElementById('audio-bitrate-select').value) * 1000;
+    updateBitrateForPC(pc, videoBitrate);
+    updateAudioBitrateForPC(pc, audioBitrate);
 
     const offer = await pc.createOffer();
     // Apply SDP munging for high-quality audio
@@ -537,39 +541,30 @@ function stopSharing() {
     }
 }
 
-// --- Bitrate Sync ---
-function updateBitrateFromSlider(val) {
-    document.getElementById('bitrate-val').innerText = val + ' Mbps';
-    updateBitrate(val);
-}
-function updateBitrateFromInput(val) {
-    document.getElementById('bitrate-slider').value = val;
-    document.getElementById('bitrate-val').innerText = val + ' Mbps';
-    updateBitrate(val);
+// --- Video Bitrate ---
+function updateVideoBitrate(mbps) {
+    const bps = parseInt(mbps) * 1000000;
+    for (const pc of viewerPCs.values()) {
+        updateBitrateForPC(pc, bps);
+    }
 }
 
 // --- Audio Bitrate ---
-function updateAudioBitrateFromSlider(val) {
-    document.getElementById('audio-bitrate-val').innerText = val + ' kbps';
-    updateAudioBitrate(val);
-}
-function updateAudioBitrateFromInput(val) {
-    document.getElementById('audio-bitrate-slider').value = val;
-    document.getElementById('audio-bitrate-val').innerText = val + ' kbps';
-    updateAudioBitrate(val);
+function updateAudioBitrateSelect(kbps) {
+    const bps = parseInt(kbps) * 1000;
+    for (const pc of viewerPCs.values()) {
+        updateAudioBitrateForPC(pc, bps);
+    }
 }
 
-async function updateAudioBitrate(kbps) {
-    const bps = kbps * 1000;
-    for (const pc of viewerPCs.values()) {
-        const senders = pc.getSenders();
-        const audioSender = senders.find(s => s.track?.kind === 'audio');
-        if (audioSender) {
-            const params = audioSender.getParameters();
-            if (!params.encodings) params.encodings = [{}];
-            params.encodings[0].maxBitrate = bps;
-            try { await audioSender.setParameters(params); } catch (e) { console.error(e); }
-        }
+async function updateAudioBitrateForPC(pc, bps) {
+    const senders = pc.getSenders();
+    const audioSender = senders.find(s => s.track?.kind === 'audio');
+    if (audioSender) {
+        const params = audioSender.getParameters();
+        if (!params.encodings) params.encodings = [{}];
+        params.encodings[0].maxBitrate = bps;
+        try { await audioSender.setParameters(params); } catch (e) { console.error(e); }
     }
 }
 
@@ -741,12 +736,23 @@ function setupUIInteractions() {
     }
 
     // Tap anywhere on stage to toggle (viewer only)
-    stage.addEventListener('click', (e) => {
+    // Use both stage and video element for Safari Mac compatibility
+    const handleStageClick = (e) => {
         // Ignore clicks on actual controls
-        if (e.target.closest('#controls-overlay') || e.target.closest('.info-pill') || e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') {
+        if (e.target.closest('#controls-overlay') || e.target.closest('.info-pill') ||
+            e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
             resetIdleTimer();
             return;
         }
+        toggleUI();
+    };
+
+    stage.addEventListener('click', handleStageClick);
+
+    // Safari Mac fix: video element can consume clicks, so attach handler to video too
+    const videoEl = document.getElementById('main-video');
+    videoEl.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent double trigger
         toggleUI();
     });
 
@@ -799,12 +805,9 @@ function setHint(mode) {
     applyContentHint(mode);
 }
 
+// Legacy function kept for compatibility
 async function updateBitrate(mbps) {
-    // document.getElementById('bitrate-val').innerText = mbps + ' Mbps'; // Removed old span
-    const bps = mbps * 1000000;
-    for (const pc of viewerPCs.values()) {
-        updateBitrateForPC(pc, bps);
-    }
+    updateVideoBitrate(mbps);
 }
 
 async function updateBitrateForPC(pc, bps) {
