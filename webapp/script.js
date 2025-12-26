@@ -324,13 +324,9 @@ async function startBroadcasting() {
             video: videoConstraints,
             audio: {
                 echoCancellation: false,
-                autoGainControl: false,
                 noiseSuppression: false,
-                googEchoCancellation: false,
-                googAutoGainControl: false,
-                googNoiseSuppression: false,
-                googHighpassFilter: false,
-                channelCount: { ideal: 2, min: 2 },
+                autoGainControl: false,
+                channelCount: 2,
                 sampleRate: 48000
             }
         });
@@ -397,13 +393,9 @@ async function changeScreen() {
             video: videoConstraints,
             audio: {
                 echoCancellation: false,
-                autoGainControl: false,
                 noiseSuppression: false,
-                googEchoCancellation: false,
-                googAutoGainControl: false,
-                googNoiseSuppression: false,
-                googHighpassFilter: false,
-                channelCount: { ideal: 2, min: 2 },
+                autoGainControl: false,
+                channelCount: 2,
                 sampleRate: 48000
             }
         });
