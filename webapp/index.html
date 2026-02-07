@@ -42,13 +42,49 @@
                         <option value="text">Text (Sharpest)</option>
                     </select>
                 </div>
-                <div style="margin-top: 15px; display: flex; align-items: center; gap: 10px;">
-                    <input type="checkbox" id="force-stereo" style="width: 20px; height: 20px; margin: 0;">
-                    <label for="force-stereo" style="font-size: 14px; cursor: pointer;">Force Stereo (Best for
-                        Tabs)</label>
+            </div>
+
+            <!-- Source Selection -->
+            <div class="source-selector">
+                <button class="source-btn active" id="btn-source-screen" onclick="setSource('screen')">💻
+                    Screen</button>
+                <button class="source-btn" id="btn-source-file" onclick="setSource('file')">📁 File</button>
+            </div>
+
+            <!-- File Setup -->
+            <div id="file-setup" class="hidden" style="margin-top: 20px;">
+                <div class="file-drop-area" id="file-drop-area">
+                    <input type="file" id="file-input" accept="video/mp4,video/webm" hidden
+                        onchange="handleFileSelect(this)">
+                    <span id="file-name-display">Select MP4/WebM File</span>
                 </div>
-            </div><button class="btn" onclick="startBroadcasting()">Start Sharing</button>
+
+                <div style="margin-top: 15px;">
+                    <label>Aspect Ratio</label>
+                    <select id="aspect-ratio" onchange="updateAspectRatio(this.value)">
+                        <option value="original">Original</option>
+                        <option value="16:9">16:9 (Widescreen)</option>
+                        <option value="4:3">4:3 (Standard)</option>
+                        <option value="21:9">21:9 (Ultrawide)</option>
+                    </select>
+                </div>
+                <div style="margin-top: 15px;">
+                    <label>Scale Mode</label>
+                    <select id="scale-mode" onchange="updateScaleMode(this.value)">
+                        <option value="contain">Fit (Black Bars)</option>
+                        <option value="cover">Fill (Crop)</option>
+                        <option value="stretch">Stretch (Distort)</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top: 15px; display: flex; align-items: center; gap: 10px;">
+                <input type="checkbox" id="force-stereo" style="width: 20px; height: 20px; margin: 0;">
+                <label for="force-stereo" style="font-size: 14px; cursor: pointer;">Force Stereo (Best for
+                    Tabs)</label>
+            </div>
+            <button class="btn" onclick="startBroadcasting()">Start Sharing</button>
         </div>
+    </div>
     </div>
     <!-- View 3: Stage (Active Video) -->
     <div id="stage" class="hidden">
@@ -78,6 +114,15 @@
         <div id="controls-overlay">
             <!-- Broadcaster Controls -->
             <div id="broadcaster-controls" class="controls-row hidden">
+                <!-- File Controls (Only visible when file source is active) -->
+                <div id="file-controls" class="hidden"
+                    style="flex-grow: 1; display: flex; align-items: center; gap: 10px; margin-right: 15px;">
+                    <button class="ctrl-btn small" id="btn-play-pause" onclick="toggleFilePlayback()">⏯</button>
+                    <span id="file-time-current" style="font-family: monospace; font-size: 0.8rem;">00:00</span>
+                    <input type="range" id="file-timeline" min="0" max="100" value="0" style="flex-grow: 1;"
+                        oninput="onSeek(this.value)">
+                    <span id="file-time-total" style="font-family: monospace; font-size: 0.8rem;">00:00</span>
+                </div>
                 <div class="ctrl">
                     <span class="ctrl-label">Video</span>
                     <select id="video-bitrate-select" onchange="updateVideoBitrate(this.value)">

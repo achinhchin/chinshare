@@ -396,4 +396,72 @@ input[type="range"]::-webkit-slider-thumb {
         width: 100%;
         justify-content: center;
     }
+
+}
+
+/* Source Selector */
+.source-selector {
+    display: flex;
+    background: rgba(120, 120, 128, 0.2);
+    border-radius: 14px;
+    padding: 4px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+}
+
+.source-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 10px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.source-btn.active {
+    background: var(--surface);
+    color: var(--text-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* File Drop Area */
+.file-drop-area {
+    border: 2px dashed var(--glass-border);
+    border-radius: 14px;
+    padding: 30px 20px;
+    text-align: center;
+    background: rgba(120, 120, 128, 0.1);
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.file-drop-area:hover {
+    background: rgba(120, 120, 128, 0.2);
+    border-color: var(--accent);
+}
+
+.file-drop-area span {
+    color: var(--text-secondary);
+    font-size: 15px;
+    font-weight: 500;
+}
+
+/* Responsive adjustments for file controls */
+@media (max-width: 600px) {
+    #file-controls {
+        flex-direction: column;
+        /* Stack controls on mobile */
+        align-items: stretch;
+        margin-right: 0 !important;
+        margin-bottom: 10px;
+        width: 100%;
+    }
+
+    #file-timeline {
+        width: 100%;
+    }
 }
