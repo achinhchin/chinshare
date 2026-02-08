@@ -213,7 +213,25 @@ ws.onmessage = async (msg) => {
             document.getElementById('viewer-count').innerText = `Viewers: ${connectedViewers.size}`;
             break;
 
-        case 'room-closed': alert('Broadcaster ended the session');
+        case 'broadcaster-disconnected':
+            // Show waiting screen but keep connection
+            // Do NOT hide stage, or we can't see the waiting message!
+            document.getElementById('stage').classList.remove('hidden');
+            document.getElementById('viewer-waiting').classList.remove('hidden');
+
+            document.getElementById('main-video').srcObject = null;
+            document.getElementById('viewer-controls').classList.add('hidden');
+            document.getElementById('info-bar').classList.add('hidden');
+
+            // Clear peer connection but keep WS
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            break;
+
+        case 'room-closed':
+            alert('Room destroyed by server');
             window.location.reload();
             break;
     }
@@ -245,6 +263,10 @@ function handleFileSelect(input) {
 
 function updateAspectRatio(ratio) {
     fileAspectRatio = ratio;
+}
+
+function updateScaleMode(mode) {
+    fileScaleMode = mode;
 }
 
 // File Controls UI
@@ -317,9 +339,14 @@ document.addEventListener('DOMContentLoaded', () => {
 function createRoom() {
     currentRole = 'broadcaster';
 
-    ws.send(JSON.stringify({
-        type: 'create-room'
-    }));
+    // Check if user entered a code to reclaim
+    const code = document.getElementById('room-input').value.trim();
+    const data = { type: 'create-room' };
+    if (code.length === 6) {
+        data.roomId = code;
+    }
+
+    ws.send(JSON.stringify(data));
 }
 
 function joinRoom() {
@@ -469,10 +496,12 @@ async function startBroadcasting() {
             await fileVideoEl.play();
             updateFileControls(); // Start UI loop
 
-            // Disable setup inputs
-            document.getElementById('file-input').disabled = true;
-            document.getElementById('aspect-ratio').disabled = true;
-            document.getElementById('scale-mode').disabled = true;
+            await fileVideoEl.play();
+            updateFileControls(); // Start UI loop
+
+            // inputs remain enabled for live updates
+            document.getElementById('file-input').disabled = true; // file change locked
+            // Aspect/Scale remain enabled
 
             // --- 1. Audio Capture (Cross-Browser) ---
             // We use Web Audio API to capture audio from the video element.

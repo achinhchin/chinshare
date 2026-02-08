@@ -21,6 +21,11 @@
                         style="background: var(--surface); padding: 0 10px; color: var(--text-secondary); font-size: 0.9rem">OR</span>
                 </div><input type="text" id="room-input" placeholder="Room Code" maxlength="6"><br><button
                     class="btn btn-outline" id="btn-join" onclick="joinRoom()" disabled>Connecting...</button>
+                <div style="margin-top: 12px; font-size: 0.9rem;">
+                    <a href="#" onclick="createRoom(); return false;"
+                        style="color: var(--text-secondary); text-decoration: none;">Join as
+                        Broadcaster</a>
+                </div>
             </div>
         </div>
         <!-- View 2: Setup (Broadcaster) -->
@@ -99,7 +104,7 @@
         </div>
         <!-- Waiting Message (Viewer) -->
         <div id="viewer-waiting" class="hidden"
-            style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+            style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 10;">
             <h2>Waiting for host to start sharing...</h2>
             <div class="loader"></div>
         </div><video id="main-video" autoplay playsinline></video>

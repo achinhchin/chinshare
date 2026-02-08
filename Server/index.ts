@@ -29,7 +29,35 @@ const handleMessage = (ws: any, message: any) => {
 
         switch (data.type) {
             case 'create-room': {
-                let roomId = generateRoomId();
+                let { roomId } = data;
+
+                // If roomId provided, try to reclaim/join as broadcaster
+                if (roomId) {
+                    const room = rooms.get(roomId);
+                    if (room) {
+                        if (room.broadcaster && room.broadcaster.raw.readyState === 1) {
+                            ws.send({ type: 'error', message: 'Room already has a broadcaster' });
+                            return;
+                        }
+
+                        // Reclaim room
+                        room.broadcaster = ws;
+                        sessionData.set(ws.raw, { role: 'broadcaster', roomId });
+                        log(`Broadcaster reclaimed room: ${roomId}`);
+                        ws.send({ type: 'room-created', roomId });
+
+                        // Notify broadcaster of existing viewers so they can connect
+                        room.viewers.forEach((viewer, viewerId) => {
+                            if (viewer.raw.readyState === 1) {
+                                ws.send({ type: 'viewer-connect', id: viewerId });
+                            }
+                        });
+                        return;
+                    }
+                    // Room ID doesn't exist, create new with this ID (if valid/available) or generate new
+                }
+
+                roomId = roomId || generateRoomId();
                 while (rooms.has(roomId)) roomId = generateRoomId();
 
                 rooms.set(roomId, {
@@ -140,19 +168,33 @@ const handleClose = (ws: any) => {
     if (!room) return;
 
     if (role === 'broadcaster') {
-        log(`Broadcaster left room ${roomId}. Destroying room.`);
+        log(`Broadcaster disconnected from room ${roomId}.`);
+        room.broadcaster = null;
+
+        // Notify viewers but keep room alive
         for (const viewer of room.viewers.values()) {
             if (viewer.raw.readyState === 1) {
-                viewer.send({ type: 'room-closed' });
+                viewer.send({ type: 'broadcaster-disconnected' });
             }
         }
-        rooms.delete(roomId);
+
+        // Only delete if NO viewers left
+        if (room.viewers.size === 0) {
+            log(`Room ${roomId} empty. Destroying.`);
+            rooms.delete(roomId);
+        }
     } else {
         if (id && room.viewers.has(id)) {
             room.viewers.delete(id);
             log(`Viewer ${id} left room ${roomId}`);
             if (room.broadcaster && room.broadcaster.raw.readyState === 1) {
                 room.broadcaster.send({ type: 'viewer-disconnect', id });
+            }
+
+            // If room has no broadcaster and no viewers, destroy it
+            if (!room.broadcaster && room.viewers.size === 0) {
+                log(`Room ${roomId} empty. Destroying.`);
+                rooms.delete(roomId);
             }
         }
     }
