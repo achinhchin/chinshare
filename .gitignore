@@ -85,3 +85,16 @@ Thumbs.db
 
 # Linux
 **/linux/flutter/ephemeral/
+
+# Flutter webapp root ignores
+flutter_webapp/.dart_tool/
+flutter_webapp/.pub-cache/
+flutter_webapp/.pub/
+flutter_webapp/build/
+flutter_webapp/coverage/
+flutter_webapp/app.*.symbols
+flutter_webapp/app.*.map.json
+flutter_webapp/android/app/debug
+flutter_webapp/android/app/profile
+flutter_webapp/android/app/release
+flutter_webapp/ios/Flutter/.last_build_id
