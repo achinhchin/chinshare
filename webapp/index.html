@@ -54,6 +54,13 @@
                 <button class="source-btn active" id="btn-source-screen" onclick="setSource('screen')">💻
                     Screen</button>
                 <button class="source-btn" id="btn-source-file" onclick="setSource('file')">📁 File</button>
+                <button class="source-btn" id="btn-source-url" onclick="setSource('url')">🌐 URL</button>
+            </div>
+
+            <!-- URL Setup -->
+            <div id="url-setup" class="hidden" style="margin-top: 20px;">
+                <input type="text" id="url-input" placeholder="Paste Video URL (mp4/webm/blob)"
+                    onchange="handleUrlInput(this.value)">
             </div>
 
             <!-- File Setup -->

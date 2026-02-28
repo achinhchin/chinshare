@@ -245,10 +245,31 @@ function setSource(source) {
 
     if (source === 'file') {
         document.getElementById('file-setup').classList.remove('hidden');
+        document.getElementById('file-drop-area').classList.remove('hidden'); // Ensure drop area is visible
+        document.getElementById('url-setup').classList.add('hidden');
         document.getElementById('content-hint-container').classList.add('hidden');
+    } else if (source === 'url') {
+        document.getElementById('url-setup').classList.remove('hidden');
+        document.getElementById('content-hint-container').classList.add('hidden');
+
+        // Re-use file video element for URL playback
+        document.getElementById('file-setup').classList.remove('hidden'); // Show controls
+        document.getElementById('file-drop-area').classList.add('hidden'); // But hide drop area
     } else {
         document.getElementById('file-setup').classList.add('hidden');
+        document.getElementById('url-setup').classList.add('hidden');
         document.getElementById('content-hint-container').classList.remove('hidden');
+    }
+}
+
+function handleUrlInput(url) {
+    if (url && url.trim().length > 0) {
+        fileVideoEl.crossOrigin = 'anonymous';
+        fileVideoEl.src = url;
+        document.getElementById('file-name-display').innerText = "URL Source";
+
+        // Auto-play preview if possible
+        fileVideoEl.play().catch(e => console.log('Preview autoplay blocked', e));
     }
 }
 
