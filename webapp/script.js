@@ -284,6 +284,12 @@ function handleFileSelect(input) {
 
 function updateAspectRatio(ratio) {
     fileAspectRatio = ratio;
+    const container = document.getElementById('custom-aspect-container');
+    if (ratio === 'custom') {
+        container.classList.remove('hidden');
+    } else {
+        container.classList.add('hidden');
+    }
 }
 
 function updateScaleMode(mode) {
@@ -590,6 +596,15 @@ async function startBroadcasting() {
                     if (fileAspectRatio === '16:9') targetRatio = 16 / 9;
                     if (fileAspectRatio === '4:3') targetRatio = 4 / 3;
                     if (fileAspectRatio === '21:9') targetRatio = 21 / 9;
+                    if (fileAspectRatio === 'custom') {
+                        const customVal = document.getElementById('custom-aspect-input').value.trim();
+                        const match = customVal.match(/^(\d+):(\d+)$/);
+                        if (match) {
+                            targetRatio = parseInt(match[1], 10) / parseInt(match[2], 10);
+                        } else if (!isNaN(customVal) && parseFloat(customVal) > 0) {
+                            targetRatio = parseFloat(customVal);
+                        }
+                    }
 
                     // Set canvas size (keep it high res)
                     const baseHeight = 1080;

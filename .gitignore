@@ -1,47 +1,88 @@
-# Dependencies
-node_modules/
-bun.lockb
+# =========================
+# System & OS
+# =========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
 
-# Build
-dist/
-build/
-.next/
+# =========================
+# Logs
+# =========================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Environment
-.env
-.env.local
-.env.*.local
-
-
-# IDE
+# =========================
+# IDEs & Editors
+# =========================
 .vscode/
 .idea/
 *.swp
 *.swo
-.DS_Store
+*.swn
+*~
+.project
+.classpath
+.cproject
+.settings/
 
-# Debug
-debug_paths.ts
+# =========================
+# Node.js & Web
+# =========================
+node_modules/
+.pnpm-store
 
-# Logs
-*.log
-npm-debug.log*
+# Wait, if they had bun.lockb, let's include it
+bun.lockb
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
-# OS
-Thumbs.db
+# Environment configurations
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
 
-# Flutter
+# Build output
+dist/
+build/
+.next/
+.nuxt/
+out/
+.vercel/
+
+# =========================
+# Flutter / Dart Projects
+# =========================
+# Core Flutter/Dart
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
+coverage/
+lib/generated_plugin_registrant.dart
 
-# Android
+# Build artifacts
+*.symbols
+*.map.json
+.last_build_id
+
+# Android specific
 **/android/app/libs/
-**/android/key.properties
-**/android/gradle-wrapper.jar
-**/android/.gradle
+**/android/app/src/main/gen/
+**/.gradle/
 **/android/captures/
 **/android/gradlew
 **/android/gradlew.bat
@@ -50,8 +91,13 @@ Thumbs.db
 **/android/**/gradle/
 **/android/**/obj/
 **/android/**/out/
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/android/key.properties
+**/android/gradle-wrapper.jar
 
-# iOS
+# iOS specific
 **/ios/**/*.mode1v3
 **/ios/**/*.mode2v3
 **/ios/**/*.moved-aside
@@ -77,24 +123,18 @@ Thumbs.db
 **/ios/ServiceDefinitions.json
 **/ios/Runner/GeneratedPluginRegistrant.*
 
-# macOS
+# macOS specific
 **/macos/Flutter/ephemeral/
+**/macos/Flutter/GeneratedPluginRegistrant.swift
 
-# Windows
+# Windows specific
 **/windows/flutter/ephemeral/
+**/windows/flutter/ephemeral/generated_config.cmake
 
-# Linux
+# Linux specific
 **/linux/flutter/ephemeral/
 
-# Flutter webapp root ignores
-flutter_webapp/.dart_tool/
-flutter_webapp/.pub-cache/
-flutter_webapp/.pub/
-flutter_webapp/build/
-flutter_webapp/coverage/
-flutter_webapp/app.*.symbols
-flutter_webapp/app.*.map.json
-flutter_webapp/android/app/debug
-flutter_webapp/android/app/profile
-flutter_webapp/android/app/release
-flutter_webapp/ios/Flutter/.last_build_id
+# =========================
+# Project Specific
+# =========================
+debug_paths.ts
