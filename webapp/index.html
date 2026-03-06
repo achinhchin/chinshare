@@ -128,18 +128,18 @@
         </div>
 
         <div id="controls-overlay">
+            <!-- File Controls Row (Full width, own line - shown for broadcaster in file mode) -->
+            <div id="file-controls" class="file-controls-row hidden">
+                <button class="ctrl-btn small" id="btn-play-pause" onclick="toggleFilePlayback()">⏯</button>
+                <span id="file-time-current" class="time-label">00:00</span>
+                <input type="range" id="file-timeline" min="0" max="1000" value="0" step="1"
+                    oninput="onSeek(this.value)">
+                <span id="file-time-total" class="time-label">00:00</span>
+            </div>
+
             <!-- Broadcaster Controls -->
             <div id="broadcaster-controls" class="controls-row hidden">
-                <!-- File Controls (Only visible when file source is active) -->
-                <div id="file-controls" class="hidden"
-                    style="flex-grow: 1; display: flex; align-items: center; gap: 10px; margin-right: 15px;">
-                    <button class="ctrl-btn small" id="btn-play-pause" onclick="toggleFilePlayback()">⏯</button>
-                    <span id="file-time-current" style="font-family: monospace; font-size: 0.8rem;">00:00</span>
-                    <input type="range" id="file-timeline" min="0" max="100" value="0" style="flex-grow: 1;"
-                        oninput="onSeek(this.value)">
-                    <span id="file-time-total" style="font-family: monospace; font-size: 0.8rem;">00:00</span>
-                </div>
-                <div class="ctrl">
+                <div class="ctrl" id="ctrl-video-bitrate">
                     <span class="ctrl-label">Video</span>
                     <select id="video-bitrate-select" onchange="updateVideoBitrate(this.value)">
                         <option value="2">2 Mbps</option>
@@ -149,7 +149,7 @@
                         <option value="40">40 Mbps</option>
                     </select>
                 </div>
-                <div class="ctrl">
+                <div class="ctrl" id="ctrl-audio-bitrate">
                     <span class="ctrl-label">Audio</span>
                     <select id="audio-bitrate-select" onchange="updateAudioBitrateSelect(this.value)">
                         <option value="90">90 kbps</option>

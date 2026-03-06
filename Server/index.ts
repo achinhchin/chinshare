@@ -1,37 +1,53 @@
 import { Elysia, file } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { join, resolve } from 'path';
+import { mkdirSync, existsSync, unlinkSync, readdirSync, statSync, rmSync, createReadStream } from 'fs';
 
 const PORT = 8000;
+const UPLOAD_DIR = resolve(join(import.meta.dir, '../uploads'));
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+
+// Ensure upload directory exists
+if (!existsSync(UPLOAD_DIR)) {
+    mkdirSync(UPLOAD_DIR, { recursive: true });
+}
 
 const log = (msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`);
 
 type Room = {
     broadcaster: any;
-    viewers: Map<string, any>; // id -> ws (wrapper or raw? let's store wrapper for sending convenience, but maybe raw is safer?)
-    // Actually, storing wrapper in Map is fine IF we only use it for .send().
-    // But wait, if wrapper is transient, can we .send() on it later?
-    // Elysia docs say .send() is available on the context.
-    // Let's store ws.raw to be safe for sending too? ws.raw.send() works in Bun.
+    viewers: Map<string, any>;
+    fileMode: boolean;
+    fileName?: string;
 };
 
 const rooms = new Map<string, Room>();
 
-// Use ws.raw as key because Elysia's `ws` object might be transient/wrapped differently per request
 const sessionData = new WeakMap<any, { role?: string, roomId?: string, id?: string }>();
 
 const generateRoomId = () => Math.floor(100000 + Math.random() * 900000).toString();
 
+// Clean up uploaded file for a room
+function cleanupRoomFiles(roomId: string) {
+    const roomDir = join(UPLOAD_DIR, roomId);
+    if (existsSync(roomDir)) {
+        try {
+            rmSync(roomDir, { recursive: true, force: true });
+            log(`Cleaned up files for room ${roomId}`);
+        } catch (e) {
+            console.error(`Failed to clean up room ${roomId} files:`, e);
+        }
+    }
+}
+
 const handleMessage = (ws: any, message: any) => {
     try {
         const data = typeof message === 'string' ? JSON.parse(message) : message;
-        // console.log('Msg:', data.type); // Debug
 
         switch (data.type) {
             case 'create-room': {
                 let { roomId } = data;
 
-                // If roomId provided, try to reclaim/join as broadcaster
                 if (roomId) {
                     const room = rooms.get(roomId);
                     if (room) {
@@ -40,13 +56,11 @@ const handleMessage = (ws: any, message: any) => {
                             return;
                         }
 
-                        // Reclaim room
                         room.broadcaster = ws;
                         sessionData.set(ws.raw, { role: 'broadcaster', roomId });
                         log(`Broadcaster reclaimed room: ${roomId}`);
                         ws.send({ type: 'room-created', roomId });
 
-                        // Notify broadcaster of existing viewers so they can connect
                         room.viewers.forEach((viewer, viewerId) => {
                             if (viewer.raw.readyState === 1) {
                                 ws.send({ type: 'viewer-connect', id: viewerId });
@@ -54,7 +68,6 @@ const handleMessage = (ws: any, message: any) => {
                         });
                         return;
                     }
-                    // Room ID doesn't exist, create new with this ID (if valid/available) or generate new
                 }
 
                 roomId = roomId || generateRoomId();
@@ -62,10 +75,10 @@ const handleMessage = (ws: any, message: any) => {
 
                 rooms.set(roomId, {
                     broadcaster: ws,
-                    viewers: new Map()
+                    viewers: new Map(),
+                    fileMode: false
                 });
 
-                // Store session on RAW socket
                 sessionData.set(ws.raw, { role: 'broadcaster', roomId });
 
                 log(`Room created: ${roomId}`);
@@ -86,7 +99,6 @@ const handleMessage = (ws: any, message: any) => {
 
                 room.viewers.set(viewerId, ws);
 
-                // Store session on RAW socket
                 sessionData.set(ws.raw, { role: 'viewer', roomId, id: viewerId });
 
                 log(`Viewer ${viewerId} joined room ${roomId}`);
@@ -95,6 +107,49 @@ const handleMessage = (ws: any, message: any) => {
                 if (room.broadcaster && room.broadcaster.raw.readyState === 1) {
                     room.broadcaster.send({ type: 'viewer-connect', id: viewerId });
                 }
+                break;
+            }
+
+            // --- File mode messages: Broadcaster -> Viewers ---
+            case 'file-mode-start': {
+                const sData = sessionData.get(ws.raw);
+                if (!sData?.roomId || sData.role !== 'broadcaster') return;
+
+                const room = rooms.get(sData.roomId);
+                if (!room) return;
+
+                room.fileMode = true;
+                room.fileName = data.fileName;
+
+                // Forward to all viewers
+                room.viewers.forEach((viewer) => {
+                    if (viewer.raw.readyState === 1) {
+                        viewer.send({
+                            type: 'file-mode-start',
+                            fileUrl: data.fileUrl
+                        });
+                    }
+                });
+                log(`Room ${sData.roomId}: File mode started - ${data.fileName}`);
+                break;
+            }
+
+            case 'file-play':
+            case 'file-pause':
+            case 'file-seek':
+            case 'file-sync': {
+                const sData = sessionData.get(ws.raw);
+                if (!sData?.roomId || sData.role !== 'broadcaster') return;
+
+                const room = rooms.get(sData.roomId);
+                if (!room) return;
+
+                // Forward to all viewers
+                room.viewers.forEach((viewer) => {
+                    if (viewer.raw.readyState === 1) {
+                        viewer.send(data);
+                    }
+                });
                 break;
             }
 
@@ -107,7 +162,6 @@ const handleMessage = (ws: any, message: any) => {
 
                 const room = rooms.get(sData.roomId);
                 if (room && data.to && room.viewers.has(data.to)) {
-                    // console.log(`Forwarding offer to ${data.to}`);
                     room.viewers.get(data.to).send(data);
                 }
                 break;
@@ -160,7 +214,6 @@ const handleClose = (ws: any) => {
 
     const { role, roomId, id } = sData;
 
-    // Clean up session data
     sessionData.delete(ws.raw);
 
     if (!roomId) return;
@@ -171,16 +224,15 @@ const handleClose = (ws: any) => {
         log(`Broadcaster disconnected from room ${roomId}.`);
         room.broadcaster = null;
 
-        // Notify viewers but keep room alive
         for (const viewer of room.viewers.values()) {
             if (viewer.raw.readyState === 1) {
                 viewer.send({ type: 'broadcaster-disconnected' });
             }
         }
 
-        // Only delete if NO viewers left
         if (room.viewers.size === 0) {
             log(`Room ${roomId} empty. Destroying.`);
+            cleanupRoomFiles(roomId);
             rooms.delete(roomId);
         }
     } else {
@@ -191,9 +243,9 @@ const handleClose = (ws: any) => {
                 room.broadcaster.send({ type: 'viewer-disconnect', id });
             }
 
-            // If room has no broadcaster and no viewers, destroy it
             if (!room.broadcaster && room.viewers.size === 0) {
                 log(`Room ${roomId} empty. Destroying.`);
+                cleanupRoomFiles(roomId);
                 rooms.delete(roomId);
             }
         }
@@ -216,11 +268,115 @@ const server = new Elysia()
         message(ws, message) { handleMessage(ws, message) },
         close(ws) { handleClose(ws) }
     })
-    // SECURE: Strict whitelist of allowed files
+    // File upload endpoint
+    .post('/upload/:roomId', async (c) => {
+        const roomId = c.params.roomId;
+        const room = rooms.get(roomId);
+
+        if (!room) {
+            return new Response('Room not found', { status: 404 });
+        }
+
+        // Get the uploaded file from the request body
+        const formData = await c.request.formData();
+        const uploadedFile = formData.get('file') as File | null;
+
+        if (!uploadedFile) {
+            return new Response('No file provided', { status: 400 });
+        }
+
+        if (uploadedFile.size > MAX_FILE_SIZE) {
+            return new Response('File too large (max 500MB)', { status: 413 });
+        }
+
+        // Create room directory
+        const roomDir = join(UPLOAD_DIR, roomId);
+        if (!existsSync(roomDir)) {
+            mkdirSync(roomDir, { recursive: true });
+        }
+
+        // Clean previous uploads for this room
+        try {
+            const existing = readdirSync(roomDir);
+            for (const f of existing) {
+                unlinkSync(join(roomDir, f));
+            }
+        } catch (e) { }
+
+        // Save file
+        const safeName = uploadedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filePath = join(roomDir, safeName);
+        const arrayBuffer = await uploadedFile.arrayBuffer();
+        await Bun.write(filePath, arrayBuffer);
+
+        log(`File uploaded for room ${roomId}: ${safeName} (${(uploadedFile.size / 1024 / 1024).toFixed(1)}MB)`);
+
+        const fileUrl = `/media/${roomId}/${safeName}`;
+        return Response.json({ success: true, fileUrl, fileName: safeName });
+    })
+    // Media serving endpoint with Range support for seeking
+    .get('/media/:roomId/:fileName', (c) => {
+        const { roomId, fileName } = c.params;
+
+        // Security: sanitize filename
+        const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filePath = join(UPLOAD_DIR, roomId, safeName);
+
+        if (!existsSync(filePath)) {
+            return new Response('File not found', { status: 404 });
+        }
+
+        const stat = statSync(filePath);
+        const fileSize = stat.size;
+
+        // Determine MIME type
+        const ext = safeName.split('.').pop()?.toLowerCase();
+        const mimeTypes: Record<string, string> = {
+            'mp4': 'video/mp4',
+            'webm': 'video/webm',
+            'mkv': 'video/x-matroska',
+            'avi': 'video/x-msvideo',
+            'mov': 'video/quicktime'
+        };
+        const contentType = mimeTypes[ext || ''] || 'application/octet-stream';
+
+        // Handle Range requests for seeking
+        const rangeHeader = c.request.headers.get('range');
+
+        if (rangeHeader) {
+            const parts = rangeHeader.replace(/bytes=/, '').split('-');
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+            const chunkSize = (end - start) + 1;
+
+            const bunFile = Bun.file(filePath);
+            const slice = bunFile.slice(start, end + 1);
+
+            return new Response(slice, {
+                status: 206,
+                headers: {
+                    'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                    'Accept-Ranges': 'bytes',
+                    'Content-Length': chunkSize.toString(),
+                    'Content-Type': contentType,
+                }
+            });
+        }
+
+        // Full file response
+        return new Response(Bun.file(filePath), {
+            headers: {
+                'Content-Length': fileSize.toString(),
+                'Content-Type': contentType,
+                'Accept-Ranges': 'bytes',
+            }
+        });
+    })
+    // Serve webapp files
     .get('/style.css', () => file(styleCss))
     .get('/script.js', () => file(scriptJs))
     .get('/', () => file(indexHtml))
-    // SECURE: Block everything else
+    // Block everything else
     .all('*', (c) => {
         console.log('404 for:', c.path);
         return new Response('Not Found / Forbidden', { status: 404 });

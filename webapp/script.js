@@ -13,7 +13,11 @@ let viewerPCs = new Map(); // id -> pc
 let startTime = null;
 let uptimeInterval = null;
 
-let broadcastSource = 'screen'; // 'screen' or 'file'
+let broadcastSource = 'screen'; // 'screen', 'file', or 'url'
+let isFileMode = false; // True when using HTTP file streaming (not WebRTC)
+let fileSyncInterval = null; // Interval for sending sync to viewers
+let selectedFile = null; // The File object selected by broadcaster
+
 let fileVideoEl = document.createElement('video');
 fileVideoEl.muted = true;
 fileVideoEl.playsInline = true;
@@ -215,13 +219,15 @@ ws.onmessage = async (msg) => {
 
         case 'broadcaster-disconnected':
             // Show waiting screen but keep connection
-            // Do NOT hide stage, or we can't see the waiting message!
             document.getElementById('stage').classList.remove('hidden');
             document.getElementById('viewer-waiting').classList.remove('hidden');
 
             document.getElementById('main-video').srcObject = null;
+            document.getElementById('main-video').removeAttribute('src');
             document.getElementById('viewer-controls').classList.add('hidden');
+            document.getElementById('file-controls').classList.add('hidden');
             document.getElementById('info-bar').classList.add('hidden');
+            isFileMode = false;
 
             // Clear peer connection but keep WS
             if (peerConnection) {
@@ -229,6 +235,83 @@ ws.onmessage = async (msg) => {
                 peerConnection = null;
             }
             break;
+
+        // --- File mode messages (viewer receives from broadcaster via server) ---
+        case 'file-mode-start': {
+            isFileMode = true;
+            const video = document.getElementById('main-video');
+            document.getElementById('viewer-waiting').classList.add('hidden');
+
+            // Load video from server URL
+            video.srcObject = null;
+            video.src = data.fileUrl;
+            video.load();
+
+            // Show viewer controls
+            document.getElementById('viewer-controls').classList.remove('hidden');
+
+            // Start muted for autoplay, then unmute
+            video.muted = true;
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    setTimeout(() => { video.muted = false; }, 100);
+                }).catch(err => {
+                    console.log('Autoplay blocked (file mode):', err);
+                    showPlayButton();
+                });
+            }
+            break;
+        }
+
+        case 'file-play': {
+            if (currentRole !== 'viewer') break;
+            const video = document.getElementById('main-video');
+            if (typeof data.time === 'number' && Number.isFinite(data.time)) {
+                video.currentTime = data.time;
+            }
+            video.play().catch(e => console.log('Play error:', e));
+            break;
+        }
+
+        case 'file-pause': {
+            if (currentRole !== 'viewer') break;
+            const video = document.getElementById('main-video');
+            video.pause();
+            if (typeof data.time === 'number' && Number.isFinite(data.time)) {
+                video.currentTime = data.time;
+            }
+            break;
+        }
+
+        case 'file-seek': {
+            if (currentRole !== 'viewer') break;
+            const video = document.getElementById('main-video');
+            if (typeof data.time === 'number' && Number.isFinite(data.time)) {
+                video.currentTime = data.time;
+            }
+            break;
+        }
+
+        case 'file-sync': {
+            if (currentRole !== 'viewer') break;
+            const video = document.getElementById('main-video');
+            if (typeof data.time === 'number' && Number.isFinite(data.time)) {
+                const drift = Math.abs(video.currentTime - data.time);
+                // Only sync if drift is more than 1.5 seconds
+                if (drift > 1.5) {
+                    console.log(`Syncing viewer: drift=${drift.toFixed(1)}s`);
+                    video.currentTime = data.time;
+                }
+                // Also sync play/pause state
+                if (data.paused && !video.paused) {
+                    video.pause();
+                } else if (!data.paused && video.paused) {
+                    video.play().catch(e => { });
+                }
+            }
+            break;
+        }
 
         case 'room-closed':
             alert('Room destroyed by server');
@@ -274,10 +357,11 @@ function handleUrlInput(url) {
 }
 
 function handleFileSelect(input) {
-    const file = input.files[0];
-    if (file) {
-        document.getElementById('file-name-display').innerText = file.name;
-        const url = URL.createObjectURL(file);
+    const f = input.files[0];
+    if (f) {
+        selectedFile = f;
+        document.getElementById('file-name-display').innerText = f.name;
+        const url = URL.createObjectURL(f);
         fileVideoEl.src = url;
     }
 }
@@ -300,57 +384,71 @@ function updateScaleMode(mode) {
 let playPromise = undefined;
 
 function toggleFilePlayback() {
-    if (!fileVideoEl) return;
+    // In file mode, control the main video (which plays from HTTP URL)
+    const videoTarget = isFileMode ? document.getElementById('main-video') : fileVideoEl;
+    if (!videoTarget) return;
 
-    if (fileVideoEl.paused || fileVideoEl.ended) {
-        playPromise = fileVideoEl.play();
+    if (videoTarget.paused || videoTarget.ended) {
+        playPromise = videoTarget.play();
         if (playPromise !== undefined) {
             playPromise.catch(e => {
                 console.error('Play error:', e);
             });
         }
+        // Send play command to viewers
+        if (isFileMode && currentRole === 'broadcaster') {
+            ws.send(JSON.stringify({ type: 'file-play', time: videoTarget.currentTime }));
+        }
     } else {
-        // If play is pending, we shouldn't pause yet or we get an error. 
-        // But for simplicity in this UI, we just try to pause.
         if (playPromise !== undefined) {
             playPromise.then(_ => {
-                fileVideoEl.pause();
-            })
-                .catch(error => {
-                    // Auto-play was prevented.
-                });
+                videoTarget.pause();
+                if (isFileMode && currentRole === 'broadcaster') {
+                    ws.send(JSON.stringify({ type: 'file-pause', time: videoTarget.currentTime }));
+                }
+            }).catch(error => { });
         } else {
-            fileVideoEl.pause();
+            videoTarget.pause();
+            if (isFileMode && currentRole === 'broadcaster') {
+                ws.send(JSON.stringify({ type: 'file-pause', time: videoTarget.currentTime }));
+            }
         }
     }
-    // UI update will happen in updateFileControls loop
 }
 
 function onSeek(val) {
-    const time = (val / 100) * fileVideoEl.duration;
+    const videoTarget = isFileMode ? document.getElementById('main-video') : fileVideoEl;
+    const time = (val / 1000) * videoTarget.duration;
     if (Number.isFinite(time)) {
-        fileVideoEl.currentTime = time;
+        videoTarget.currentTime = time;
+        // Send seek command to viewers
+        if (isFileMode && currentRole === 'broadcaster') {
+            ws.send(JSON.stringify({ type: 'file-seek', time: time }));
+        }
     }
 }
 
 function updateFileControls() {
-    if (!fileVideoEl.paused && !fileVideoEl.ended) {
+    const videoTarget = isFileMode ? document.getElementById('main-video') : fileVideoEl;
+
+    if (!videoTarget.paused && !videoTarget.ended) {
         document.getElementById('btn-play-pause').innerText = '⏸';
     } else {
         document.getElementById('btn-play-pause').innerText = '▶';
     }
 
-    const progress = (fileVideoEl.currentTime / fileVideoEl.duration) * 100 || 0;
+    const progress = (videoTarget.currentTime / videoTarget.duration) * 1000 || 0;
     document.getElementById('file-timeline').value = progress;
 
     const formatTime = (seconds) => {
-        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
         const s = Math.floor(seconds % 60).toString().padStart(2, '0');
-        return `${m}:${s}`;
+        return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
     };
 
-    document.getElementById('file-time-current').innerText = formatTime(fileVideoEl.currentTime || 0);
-    document.getElementById('file-time-total').innerText = formatTime(fileVideoEl.duration || 0);
+    document.getElementById('file-time-current').innerText = formatTime(videoTarget.currentTime || 0);
+    document.getElementById('file-time-total').innerText = formatTime(videoTarget.duration || 0);
 
     requestAnimationFrame(updateFileControls);
 }
@@ -466,6 +564,7 @@ async function startBroadcasting() {
     try {
         if (broadcastSource === 'screen') {
             // --- Screen Sharing Logic (Existing) ---
+            isFileMode = false;
             const resLimit = document.getElementById('res-limit').value;
             let videoConstraints = { frameRate: 60 };
             if (resLimit === '1080') videoConstraints.height = { ideal: 1080 };
@@ -512,200 +611,257 @@ async function startBroadcasting() {
 
             localStream = await processAudioToStereo(rawStream);
 
+            // --- Common setup for screen mode ---
+            showView('stage');
+            document.getElementById('info-bar').classList.remove('hidden');
+            document.getElementById('info-bar').style.position = 'absolute';
+            document.getElementById('info-bar').style.top = '20px';
+            document.getElementById('stage-room-code').innerText = 'Code: ' + currentRoomId;
+            document.getElementById('broadcaster-controls').classList.remove('hidden');
+
+            // Show switch button for screen mode
+            const switchBtn = document.querySelector('button[onclick="changeScreen()"]');
+            if (switchBtn) switchBtn.classList.remove('hidden');
+
+            // Show bitrate controls
+            document.getElementById('ctrl-video-bitrate').classList.remove('hidden');
+            document.getElementById('ctrl-audio-bitrate').classList.remove('hidden');
+
+            // Setup local preview
+            document.getElementById('main-video').srcObject = localStream;
+            document.getElementById('main-video').muted = true;
+            document.getElementById('main-video').play();
+
+            startUptime();
+
+            // Process queued viewers
+            connectedViewers.forEach(id => {
+                initiateConnection(id);
+            });
+
+            // Track stopped?
+            localStream.getVideoTracks()[0].onended = () => {
+                alert('Sharing stopped');
+                window.location.reload();
+            };
+
         } else {
-            // --- File Streaming Logic (New) ---
-            if (!fileVideoEl.src) return alert('Please select a file first');
+            // --- File/URL Streaming via HTTP (New Architecture) ---
+            isFileMode = true;
 
-            // Safari compat: Unmute to capture audio via Web Audio API
-            fileVideoEl.muted = false;
-            fileVideoEl.volume = 1;
+            // For URL source, we treat it similarly but won't upload
+            if (broadcastSource === 'file') {
+                if (!selectedFile) return alert('Please select a file first');
 
-            await fileVideoEl.play();
-            updateFileControls(); // Start UI loop
+                // Upload file to server
+                const formData = new FormData();
+                formData.append('file', selectedFile);
 
-            await fileVideoEl.play();
-            updateFileControls(); // Start UI loop
+                // Show uploading state
+                const startBtn = document.querySelector('#setup-view .btn');
+                if (startBtn) {
+                    startBtn.disabled = true;
+                    startBtn.innerText = 'Uploading...';
+                }
 
-            // inputs remain enabled for live updates
-            document.getElementById('file-input').disabled = true; // file change locked
-            // Aspect/Scale remain enabled
+                let uploadResult;
+                try {
+                    const response = await fetch(`/upload/${currentRoomId}`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    uploadResult = await response.json();
 
-            // --- 1. Audio Capture (Cross-Browser) ---
-            // We use Web Audio API to capture audio from the video element.
-            // This works in Safari where .captureStream() is missing on video elements.
-            // It also handles redirecting audio to the stream so it doesn't play out of speakers (avoiding echo).
-
-            if (!audioContext) {
-                audioContext = new AudioContext({ sampleRate: 48000 });
-            }
-            if (audioContext.state === 'suspended') {
-                await audioContext.resume();
-            }
-
-            // Create a source from the video element
-            // Note: We need to ensure we don't create multiple sources for the same element if we restart stream
-            if (!fileVideoEl._source) {
-                fileVideoEl._source = audioContext.createMediaElementSource(fileVideoEl);
-            }
-
-            // Create a destination for the stream
-            const dest = audioContext.createMediaStreamDestination();
-            fileVideoEl._source.connect(dest);
-
-            // Also connect to destination if we want local playback? 
-            // In ChinShare, local playback is via #main-video (which is muted to avoid echo).
-            // fileVideoEl is hidden. If we connect source->dest, it stops playing to speakers.
-            // This is desired. The stream will have audio. #main-video will get the stream.
-            // #main-video is muted locally. 
-            // So: Broadcaster sees video, NO audio locally (to prevent echo/feedback loop if they have speakers on).
-            // Perfect.
-
-            let audioTracks = dest.stream.getAudioTracks();
-
-            // --- 2. Video Capture ---
-            let videoStream;
-
-            // Check if we can use native captureStream (Chrome/Firefox) AND we want original ratio
-            // Safari does NOT support captureStream on video elements, so this check will fail there.
-            const canCaptureNative = (typeof fileVideoEl.captureStream === 'function') || (typeof fileVideoEl.mozCaptureStream === 'function');
-
-            if (fileAspectRatio === 'original' && fileScaleMode === 'contain' && canCaptureNative) {
-                // Use native capture if available and no processing needed
-                const stream = fileVideoEl.captureStream ? fileVideoEl.captureStream() : fileVideoEl.mozCaptureStream();
-                videoStream = stream;
-            } else {
-                // Formatting/Processing needed OR Safari (fallback to Canvas)
-
-                // Canvas Processing Loop
-                const drawCanvas = () => {
-                    if (fileVideoEl.paused || fileVideoEl.ended) {
-                        if (!fileVideoEl.ended) requestAnimationFrame(drawCanvas);
-                        return;
+                    if (!uploadResult.success) {
+                        throw new Error('Upload failed');
                     }
-
-                    const vw = fileVideoEl.videoWidth;
-                    const vh = fileVideoEl.videoHeight;
-
-                    if (vw === 0 || vh === 0) {
-                        requestAnimationFrame(drawCanvas);
-                        return;
+                } catch (e) {
+                    if (startBtn) {
+                        startBtn.disabled = false;
+                        startBtn.innerText = 'Start Sharing';
                     }
+                    alert('Failed to upload file: ' + e.message);
+                    return;
+                }
 
-                    // Target Aspect Ratio
-                    let targetRatio = vw / vh;
-                    if (fileAspectRatio === '16:9') targetRatio = 16 / 9;
-                    if (fileAspectRatio === '4:3') targetRatio = 4 / 3;
-                    if (fileAspectRatio === '21:9') targetRatio = 21 / 9;
-                    if (fileAspectRatio === 'custom') {
-                        const customVal = document.getElementById('custom-aspect-input').value.trim();
-                        const match = customVal.match(/^(\d+):(\d+)$/);
-                        if (match) {
-                            targetRatio = parseInt(match[1], 10) / parseInt(match[2], 10);
-                        } else if (!isNaN(customVal) && parseFloat(customVal) > 0) {
-                            targetRatio = parseFloat(customVal);
-                        }
-                    }
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.innerText = 'Start Sharing';
+                }
 
-                    // Set canvas size (keep it high res)
-                    const baseHeight = 1080;
-                    const baseWidth = Math.round(baseHeight * targetRatio);
+                // Switch to stage view
+                showView('stage');
+                document.getElementById('info-bar').classList.remove('hidden');
+                document.getElementById('info-bar').style.position = 'absolute';
+                document.getElementById('info-bar').style.top = '20px';
+                document.getElementById('stage-room-code').innerText = 'Code: ' + currentRoomId;
+                document.getElementById('broadcaster-controls').classList.remove('hidden');
 
-                    if (fileCanvas.width !== baseWidth || fileCanvas.height !== baseHeight) {
-                        fileCanvas.width = baseWidth;
-                        fileCanvas.height = baseHeight;
-                    }
+                // Hide switch button and bitrate controls in file mode
+                const switchBtn = document.querySelector('button[onclick="changeScreen()"]');
+                if (switchBtn) switchBtn.classList.add('hidden');
+                document.getElementById('ctrl-video-bitrate').classList.add('hidden');
+                document.getElementById('ctrl-audio-bitrate').classList.add('hidden');
 
-                    // Clear
-                    fileCtx.fillStyle = 'black';
-                    fileCtx.fillRect(0, 0, fileCanvas.width, fileCanvas.height);
+                // Show file controls
+                document.getElementById('file-controls').classList.remove('hidden');
 
-                    // Calculate Dimensions based on Scale Mode
-                    let drawW, drawH, dx, dy;
+                // Set the main video to the uploaded file URL
+                const mainVideo = document.getElementById('main-video');
+                mainVideo.srcObject = null;
+                mainVideo.src = uploadResult.fileUrl;
+                mainVideo.muted = false;
+                mainVideo.volume = 1;
+                mainVideo.load();
 
-                    if (fileScaleMode === 'stretch') {
-                        // Stretch to fill entire canvas (distort)
-                        drawW = baseWidth;
-                        drawH = baseHeight;
-                        dx = 0;
-                        dy = 0;
-                    } else if (fileScaleMode === 'cover') {
-                        // Cover (Crop)
-                        const scale = Math.max(baseWidth / vw, baseHeight / vh);
-                        drawW = vw * scale;
-                        drawH = vh * scale;
-                        dx = (baseWidth - drawW) / 2;
-                        dy = (baseHeight - drawH) / 2;
-                    } else {
-                        // Contain (Default - Black Bars)
-                        const scale = Math.min(baseWidth / vw, baseHeight / vh);
-                        drawW = vw * scale;
-                        drawH = vh * scale;
-                        dx = (baseWidth - drawW) / 2;
-                        dy = (baseHeight - drawH) / 2;
-                    }
-
-                    fileCtx.drawImage(fileVideoEl, dx, dy, drawW, drawH);
-
-                    requestAnimationFrame(drawCanvas);
+                mainVideo.onloadedmetadata = () => {
+                    mainVideo.play().catch(e => console.log('Autoplay blocked:', e));
+                    updateFileControls();
                 };
 
-                requestAnimationFrame(drawCanvas);
-                videoStream = fileCanvas.captureStream(60);
+                // Update mute button state
+                document.getElementById('mute-btn').innerText = '🔊';
+
+                // Notify viewers about file mode
+                ws.send(JSON.stringify({
+                    type: 'file-mode-start',
+                    fileUrl: uploadResult.fileUrl,
+                    fileName: uploadResult.fileName
+                }));
+
+                // Start periodic sync to viewers
+                if (fileSyncInterval) clearInterval(fileSyncInterval);
+                fileSyncInterval = setInterval(() => {
+                    const v = document.getElementById('main-video');
+                    if (v && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'file-sync',
+                            time: v.currentTime,
+                            paused: v.paused
+                        }));
+                    }
+                }, 2000);
+
+            } else if (broadcastSource === 'url') {
+                // URL source - same concept but the file is already on the internet
+                // For now, fall back to the old WebRTC approach for URL sources
+                // since we can't upload external URLs to our server
+                if (!fileVideoEl.src) return alert('Please enter a video URL first');
+
+                fileVideoEl.muted = false;
+                fileVideoEl.volume = 1;
+                await fileVideoEl.play();
+                updateFileControls();
+
+                document.getElementById('file-input').disabled = true;
+
+                if (!audioContext) {
+                    audioContext = new AudioContext({ sampleRate: 48000 });
+                }
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
+
+                if (!fileVideoEl._source) {
+                    fileVideoEl._source = audioContext.createMediaElementSource(fileVideoEl);
+                }
+
+                const dest = audioContext.createMediaStreamDestination();
+                fileVideoEl._source.connect(dest);
+
+                let audioTracks = dest.stream.getAudioTracks();
+                let videoStream;
+
+                const canCaptureNative = (typeof fileVideoEl.captureStream === 'function') || (typeof fileVideoEl.mozCaptureStream === 'function');
+
+                if (fileAspectRatio === 'original' && fileScaleMode === 'contain' && canCaptureNative) {
+                    const stream = fileVideoEl.captureStream ? fileVideoEl.captureStream() : fileVideoEl.mozCaptureStream();
+                    videoStream = stream;
+                } else {
+                    const drawCanvas = () => {
+                        if (fileVideoEl.paused || fileVideoEl.ended) {
+                            if (!fileVideoEl.ended) requestAnimationFrame(drawCanvas);
+                            return;
+                        }
+                        const vw = fileVideoEl.videoWidth;
+                        const vh = fileVideoEl.videoHeight;
+                        if (vw === 0 || vh === 0) {
+                            requestAnimationFrame(drawCanvas);
+                            return;
+                        }
+                        let targetRatio = vw / vh;
+                        if (fileAspectRatio === '16:9') targetRatio = 16 / 9;
+                        if (fileAspectRatio === '4:3') targetRatio = 4 / 3;
+                        if (fileAspectRatio === '21:9') targetRatio = 21 / 9;
+                        if (fileAspectRatio === 'custom') {
+                            const customVal = document.getElementById('custom-aspect-input').value.trim();
+                            const match = customVal.match(/^(\d+):(\d+)$/);
+                            if (match) targetRatio = parseInt(match[1], 10) / parseInt(match[2], 10);
+                            else if (!isNaN(customVal) && parseFloat(customVal) > 0) targetRatio = parseFloat(customVal);
+                        }
+                        const baseHeight = 1080;
+                        const baseWidth = Math.round(baseHeight * targetRatio);
+                        if (fileCanvas.width !== baseWidth || fileCanvas.height !== baseHeight) {
+                            fileCanvas.width = baseWidth;
+                            fileCanvas.height = baseHeight;
+                        }
+                        fileCtx.fillStyle = 'black';
+                        fileCtx.fillRect(0, 0, fileCanvas.width, fileCanvas.height);
+                        let drawW, drawH, dx, dy;
+                        if (fileScaleMode === 'stretch') {
+                            drawW = baseWidth; drawH = baseHeight; dx = 0; dy = 0;
+                        } else if (fileScaleMode === 'cover') {
+                            const scale = Math.max(baseWidth / vw, baseHeight / vh);
+                            drawW = vw * scale; drawH = vh * scale;
+                            dx = (baseWidth - drawW) / 2; dy = (baseHeight - drawH) / 2;
+                        } else {
+                            const scale = Math.min(baseWidth / vw, baseHeight / vh);
+                            drawW = vw * scale; drawH = vh * scale;
+                            dx = (baseWidth - drawW) / 2; dy = (baseHeight - drawH) / 2;
+                        }
+                        fileCtx.drawImage(fileVideoEl, dx, dy, drawW, drawH);
+                        requestAnimationFrame(drawCanvas);
+                    };
+                    requestAnimationFrame(drawCanvas);
+                    videoStream = fileCanvas.captureStream(60);
+                }
+
+                localStream = new MediaStream([
+                    ...videoStream.getVideoTracks(),
+                    ...audioTracks
+                ]);
+
+                document.getElementById('file-controls').classList.remove('hidden');
+
+                // Common setup for URL mode (uses WebRTC)
+                showView('stage');
+                document.getElementById('info-bar').classList.remove('hidden');
+                document.getElementById('info-bar').style.position = 'absolute';
+                document.getElementById('info-bar').style.top = '20px';
+                document.getElementById('stage-room-code').innerText = 'Code: ' + currentRoomId;
+                document.getElementById('broadcaster-controls').classList.remove('hidden');
+
+                const switchBtn = document.querySelector('button[onclick="changeScreen()"]');
+                if (switchBtn) switchBtn.classList.add('hidden');
+
+                document.getElementById('main-video').srcObject = localStream;
+                document.getElementById('main-video').muted = false;
+                document.getElementById('main-video').volume = 1;
+                document.getElementById('mute-btn').innerText = '🔊';
+                document.getElementById('main-video').play();
+
+                connectedViewers.forEach(id => {
+                    initiateConnection(id);
+                });
+
+                localStream.getVideoTracks()[0].onended = () => {
+                    alert('Sharing stopped');
+                    window.location.reload();
+                };
             }
 
-            // Combine
-            localStream = new MediaStream([
-                ...videoStream.getVideoTracks(),
-                ...audioTracks
-            ]);
-
-            // Show File Controls
-            document.getElementById('file-controls').classList.remove('hidden');
+            startUptime();
         }
-
-        // --- Common Setup ---
-        showView('stage');
-
-        // Show Info Bar & Controls
-        document.getElementById('info-bar').classList.remove('hidden');
-        document.getElementById('info-bar').style.position = 'absolute';
-        document.getElementById('info-bar').style.top = '20px';
-        document.getElementById('stage-room-code').innerText = 'Code: ' + currentRoomId;
-        document.getElementById('broadcaster-controls').classList.remove('hidden');
-
-        // Toggle Switch Button visibility
-        const switchBtn = document.querySelector('button[onclick="changeScreen()"]');
-        if (switchBtn) {
-            if (broadcastSource === 'file') switchBtn.classList.add('hidden');
-            else switchBtn.classList.remove('hidden');
-        }
-
-        // Setup local preview
-        document.getElementById('main-video').srcObject = localStream;
-
-        // Mute local preview only if screen sharing (to avoid mic echo)
-        // If file sharing, we want to hear the audio!
-        document.getElementById('main-video').muted = (broadcastSource === 'screen');
-        if (broadcastSource === 'file') {
-            document.getElementById('main-video').volume = 1;
-            // Update UI mute button state
-            document.getElementById('mute-btn').innerText = '🔊';
-        }
-
-        document.getElementById('main-video').play();
-
-        startUptime();
-
-        // Process queued viewers
-        connectedViewers.forEach(id => {
-            initiateConnection(id);
-        });
-
-        // Track stopped?
-        localStream.getVideoTracks()[0].onended = () => {
-            alert('Sharing stopped');
-            window.location.reload();
-        };
 
     } catch (e) {
         console.error(e);
@@ -874,7 +1030,30 @@ async function handleViewerConnect(viewerId) {
 
     document.getElementById('viewer-count').innerText = `Viewers: ${connectedViewers.size}`;
 
-    if (localStream) {
+    if (isFileMode) {
+        // In file mode, just send the file URL to the new viewer
+        // The viewer will load it directly via HTTP
+        // Send a file-mode-start to this specific viewer (via broadcast from server)
+        // Actually, we re-send file-mode-start so the new viewer gets it
+        const mainVideo = document.getElementById('main-video');
+        const videoSrc = mainVideo.src || mainVideo.getAttribute('src');
+        if (videoSrc) {
+            // Extract relative URL from absolute
+            const url = new URL(videoSrc, location.origin);
+            ws.send(JSON.stringify({
+                type: 'file-mode-start',
+                fileUrl: url.pathname
+            }));
+            // Also send current sync state
+            setTimeout(() => {
+                ws.send(JSON.stringify({
+                    type: 'file-sync',
+                    time: mainVideo.currentTime,
+                    paused: mainVideo.paused
+                }));
+            }, 500);
+        }
+    } else if (localStream) {
         initiateConnection(viewerId);
     }
 }
@@ -1008,6 +1187,13 @@ function stopSharing() {
         mainVideo.muted = true;
         mainVideo.pause();
         mainVideo.srcObject = null;
+        mainVideo.removeAttribute('src');
+    }
+
+    // Stop sync interval
+    if (fileSyncInterval) {
+        clearInterval(fileSyncInterval);
+        fileSyncInterval = null;
     }
 
     if (localStream) {
@@ -1024,6 +1210,8 @@ function stopSharing() {
     if (typeof audioContext !== 'undefined' && audioContext && audioContext.state !== 'closed') {
         audioContext.close();
     }
+
+    isFileMode = false;
 
     // No alert, just reload to reset state cleanly
     window.location.reload();
@@ -1184,6 +1372,7 @@ function checkFeatureSupport() {
 // UI Interaction Logic (Auto-hide & Toggle)
 let uiTimeout;
 const UI_IDLE_TIME = 4000;
+let uiVisible = true;
 
 function setupUIInteractions() {
     const stage = document.getElementById('stage');
@@ -1191,40 +1380,32 @@ function setupUIInteractions() {
     const infoBar = document.getElementById('info-bar');
 
     function showUI() {
+        uiVisible = true;
         controls.classList.remove('hidden-ui');
         infoBar.classList.remove('hidden-ui');
         resetIdleTimer();
     }
 
     function hideUI() {
-        // Broadcaster: Never auto-hide, always keep controls visible
-        if (currentRole === 'broadcaster') return;
-
+        uiVisible = false;
         controls.classList.add('hidden-ui');
         infoBar.classList.add('hidden-ui');
     }
 
     function toggleUI() {
-        // Broadcaster: Don't toggle, always show
-        if (currentRole === 'broadcaster') return;
-
-        if (controls.classList.contains('hidden-ui')) {
-            showUI();
-        } else {
+        if (uiVisible) {
             hideUI();
+        } else {
+            showUI();
         }
     }
 
     function resetIdleTimer() {
-        // Broadcaster: No timer needed
-        if (currentRole === 'broadcaster') return;
-
         clearTimeout(uiTimeout);
         uiTimeout = setTimeout(hideUI, UI_IDLE_TIME);
     }
 
-    // Tap anywhere on stage to toggle (viewer only)
-    // Use both stage and video element for Safari Mac compatibility
+    // Click handler for toggling UI
     const handleStageClick = (e) => {
         // Ignore clicks on actual controls
         if (e.target.closest('#controls-overlay') || e.target.closest('.info-pill') ||
@@ -1237,26 +1418,55 @@ function setupUIInteractions() {
 
     stage.addEventListener('click', handleStageClick);
 
-    // Safari Mac fix: video element can consume clicks, so attach handler to video too
+    // Safari / all browsers: video element can consume clicks
     const videoEl = document.getElementById('main-video');
     videoEl.addEventListener('click', (e) => {
-        e.stopPropagation(); // Prevent double trigger
+        e.stopPropagation();
         toggleUI();
     });
 
-    // Any interaction resets timer (viewer only)
-    ['mousemove', 'touchstart', 'click', 'input'].forEach(evt => {
+    // Touch support: use touchend to avoid conflicts with scrolling
+    let touchStartY = 0;
+    let touchStartX = 0;
+
+    stage.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }
+    }, { passive: true });
+
+    stage.addEventListener('touchend', (e) => {
+        // Only toggle if it was a tap (not a scroll/swipe)
+        if (e.changedTouches.length === 1) {
+            const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
+            const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+
+            // If movement is small, treat as a tap
+            if (dx < 15 && dy < 15) {
+                // Ignore taps on controls themselves
+                if (e.target.closest('#controls-overlay') || e.target.closest('.info-pill') ||
+                    e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
+                    resetIdleTimer();
+                    return;
+                }
+                e.preventDefault(); // Prevent ghost click
+                toggleUI();
+            }
+        }
+    });
+
+    // Any interaction resets idle timer
+    ['mousemove', 'input'].forEach(evt => {
         document.addEventListener(evt, () => {
-            if (!controls.classList.contains('hidden-ui')) {
+            if (uiVisible) {
                 resetIdleTimer();
             }
         });
     });
 
-    // Initial start - only for viewer
-    if (currentRole !== 'broadcaster') {
-        resetIdleTimer();
-    }
+    // Start idle timer
+    resetIdleTimer();
 }
 
 // Call on load

@@ -162,6 +162,7 @@ select {
     display: flex;
     justify-content: center;
     align-items: center;
+    touch-action: manipulation;
 }
 
 video {
@@ -178,8 +179,10 @@ video {
     transform: translateX(-50%);
 
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 16px;
+    justify-content: center;
+    gap: 12px 16px;
 
     background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(30px);
@@ -187,6 +190,7 @@ video {
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 20px;
     padding: 12px 20px;
+    max-width: min(95vw, 800px);
 
     z-index: 9999;
     transition: transform 0.3s, opacity 0.3s;
@@ -278,10 +282,38 @@ input[type="range"]::-webkit-slider-thumb {
     background: white;
     border-radius: 50%;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
 }
 
 #volume-slider {
     width: 60px;
+}
+
+/* File Controls Row - full width on its own line */
+.file-controls-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    flex-basis: 100%;
+    order: -1;
+}
+
+.file-controls-row #file-timeline {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    height: 6px;
+    cursor: pointer;
+}
+
+.file-controls-row .time-label {
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.8);
+    white-space: nowrap;
+    min-width: 38px;
+    text-align: center;
 }
 
 /* Info Bar */
@@ -377,6 +409,10 @@ input[type="range"]::-webkit-slider-thumb {
         width: 100%;
     }
 
+    .file-controls-row {
+        width: 100%;
+    }
+
     #broadcaster-controls {
         flex-direction: column;
         gap: 8px;
@@ -452,16 +488,12 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* Responsive adjustments for file controls */
 @media (max-width: 600px) {
-    #file-controls {
-        flex-direction: column;
-        /* Stack controls on mobile */
-        align-items: stretch;
-        margin-right: 0 !important;
-        margin-bottom: 10px;
-        width: 100%;
+    .file-controls-row {
+        gap: 8px;
     }
 
-    #file-timeline {
-        width: 100%;
+    .file-controls-row .time-label {
+        font-size: 0.7rem;
+        min-width: 32px;
     }
 }
