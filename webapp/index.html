@@ -119,6 +119,20 @@
             <h2>Waiting for host to start sharing...</h2>
             <div class="loader"></div>
         </div><video id="main-video" autoplay playsinline></video>
+
+        <!-- Upload Progress (Broadcaster) -->
+        <div id="upload-progress-container" class="hidden">
+            <div class="upload-progress-text">Uploading File... <span id="upload-percent">0%</span></div>
+            <div class="upload-progress-bar">
+                <div id="upload-progress-fill"></div>
+            </div>
+        </div>
+
+        <!-- Buffering Indicator (Viewer) -->
+        <div id="buffering-indicator" class="hidden">
+            <div class="loader"></div>
+            <div style="margin-top: 10px; color: white;">Buffering...</div>
+        </div>
         <!-- Stats Overlay (Viewer & Broadcaster) -->
         <div id="stats-overlay" class="hidden">
             <div>RESOLUTION: <span id="stat-res">-</span></div>

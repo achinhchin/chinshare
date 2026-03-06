@@ -242,10 +242,21 @@ ws.onmessage = async (msg) => {
             const video = document.getElementById('main-video');
             document.getElementById('viewer-waiting').classList.add('hidden');
 
-            // Load video from server URL
+            // Load video from server URL, add timestamp to bypass cache
             video.srcObject = null;
-            video.src = data.fileUrl;
+            video.src = data.fileUrl + '?t=' + Date.now();
             video.load();
+
+            // Set up buffering indicators for viewer
+            video.onwaiting = () => {
+                document.getElementById('buffering-indicator').classList.remove('hidden');
+            };
+            video.onplaying = () => {
+                document.getElementById('buffering-indicator').classList.add('hidden');
+            };
+            video.oncanplay = () => {
+                document.getElementById('buffering-indicator').classList.add('hidden');
+            };
 
             // Show viewer controls
             document.getElementById('viewer-controls').classList.remove('hidden');
@@ -657,20 +668,55 @@ async function startBroadcasting() {
                 const formData = new FormData();
                 formData.append('file', selectedFile);
 
-                // Show uploading state
+                // Show uploading state and progress container
                 const startBtn = document.querySelector('#setup-view .btn');
                 if (startBtn) {
                     startBtn.disabled = true;
                     startBtn.innerText = 'Uploading...';
                 }
 
+                // Show progress UI in stage view early
+                showView('stage');
+                document.getElementById('info-bar').classList.remove('hidden');
+                document.getElementById('info-bar').style.position = 'absolute';
+                document.getElementById('info-bar').style.top = '20px';
+                document.getElementById('stage-room-code').innerText = 'Code: ' + currentRoomId;
+                document.getElementById('broadcaster-controls').classList.remove('hidden');
+
+                const progressContainer = document.getElementById('upload-progress-container');
+                const progressFill = document.getElementById('upload-progress-fill');
+                const progressText = document.getElementById('upload-percent');
+                progressContainer.classList.remove('hidden');
+
                 let uploadResult;
                 try {
-                    const response = await fetch(`/upload/${currentRoomId}`, {
-                        method: 'POST',
-                        body: formData
+                    uploadResult = await new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest();
+                        xhr.open('POST', `/upload/${currentRoomId}`, true);
+
+                        xhr.upload.onprogress = (e) => {
+                            if (e.lengthComputable) {
+                                const percentComplete = Math.round((e.loaded / e.total) * 100);
+                                progressFill.style.width = percentComplete + '%';
+                                progressText.innerText = percentComplete + '%';
+                            }
+                        };
+
+                        xhr.onload = () => {
+                            if (xhr.status >= 200 && xhr.status < 300) {
+                                try {
+                                    resolve(JSON.parse(xhr.responseText));
+                                } catch (err) {
+                                    reject(new Error('Invalid JSON response'));
+                                }
+                            } else {
+                                reject(new Error('Upload failed with status ' + xhr.status));
+                            }
+                        };
+
+                        xhr.onerror = () => reject(new Error('XHR Network Error'));
+                        xhr.send(formData);
                     });
-                    uploadResult = await response.json();
 
                     if (!uploadResult.success) {
                         throw new Error('Upload failed');
@@ -680,24 +726,21 @@ async function startBroadcasting() {
                         startBtn.disabled = false;
                         startBtn.innerText = 'Start Sharing';
                     }
+                    progressContainer.classList.add('hidden');
                     alert('Failed to upload file: ' + e.message);
                     return;
                 }
+
+                // Hide progress UI
+                progressContainer.classList.add('hidden');
 
                 if (startBtn) {
                     startBtn.disabled = false;
                     startBtn.innerText = 'Start Sharing';
                 }
 
-                // Switch to stage view
-                showView('stage');
-                document.getElementById('info-bar').classList.remove('hidden');
-                document.getElementById('info-bar').style.position = 'absolute';
-                document.getElementById('info-bar').style.top = '20px';
-                document.getElementById('stage-room-code').innerText = 'Code: ' + currentRoomId;
-                document.getElementById('broadcaster-controls').classList.remove('hidden');
-
-                // Hide switch button and bitrate controls in file mode
+                // We already switched to stage view to show progress
+                // Just need to hide the switch button and bitrate controls
                 const switchBtn = document.querySelector('button[onclick="changeScreen()"]');
                 if (switchBtn) switchBtn.classList.add('hidden');
                 document.getElementById('ctrl-video-bitrate').classList.add('hidden');
@@ -1188,6 +1231,11 @@ function stopSharing() {
         mainVideo.pause();
         mainVideo.srcObject = null;
         mainVideo.removeAttribute('src');
+        // Clear any buffering states
+        document.getElementById('buffering-indicator').classList.add('hidden');
+        mainVideo.onwaiting = null;
+        mainVideo.onplaying = null;
+        mainVideo.oncanplay = null;
     }
 
     // Stop sync interval

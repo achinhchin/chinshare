@@ -5,7 +5,7 @@ import { mkdirSync, existsSync, unlinkSync, readdirSync, statSync, rmSync, creat
 
 const PORT = 8000;
 const UPLOAD_DIR = resolve(join(import.meta.dir, '../uploads'));
-const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 
 // Ensure upload directory exists
 if (!existsSync(UPLOAD_DIR)) {
@@ -359,6 +359,7 @@ const server = new Elysia()
                     'Accept-Ranges': 'bytes',
                     'Content-Length': chunkSize.toString(),
                     'Content-Type': contentType,
+                    'Cache-Control': 'no-store',
                 }
             });
         }
@@ -369,6 +370,7 @@ const server = new Elysia()
                 'Content-Length': fileSize.toString(),
                 'Content-Type': contentType,
                 'Accept-Ranges': 'bytes',
+                'Cache-Control': 'no-store',
             }
         });
     })
