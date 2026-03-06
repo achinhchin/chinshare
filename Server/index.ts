@@ -261,7 +261,9 @@ const scriptJs = join(webappDir, 'script.js');
 console.log('Server root:', import.meta.dir);
 console.log('Serving from:', webappDir);
 
-const server = new Elysia()
+const server = new Elysia({
+    serve: { maxRequestBodySize: MAX_FILE_SIZE }
+})
     .use(cors({ origin: true }))
     .ws('/ws', {
         open(ws) { },
@@ -286,7 +288,7 @@ const server = new Elysia()
         }
 
         if (uploadedFile.size > MAX_FILE_SIZE) {
-            return new Response('File too large (max 500MB)', { status: 413 });
+            return new Response('File too large (max 2GB)', { status: 413 });
         }
 
         // Create room directory
